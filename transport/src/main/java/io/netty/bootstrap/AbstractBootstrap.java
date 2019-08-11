@@ -48,14 +48,34 @@ import java.util.Map;
  * <p>When not used in a {@link ServerBootstrap} context, the {@link #bind()} methods are useful for connectionless
  * transports such as datagram (UDP).</p>
  */
+
+/**
+ * todo AbstractBootstrap 是个抽象类，并且实现 Cloneable 接口。另外，它声明了 B 、C 两个泛型：
+ *  B ：继承 AbstractBootstrap 类，用于表示自身的类型。
+ *  C ：继承 Channel 类，表示表示创建的 Channel 类型。
+ * @param <B>
+ * @param <C>
+ */
 public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C extends Channel> implements Cloneable {
 
+    //todo EventLoopGroup 对象
     volatile EventLoopGroup group;
+
+
     @SuppressWarnings("deprecation")
+    //todo Channel 工厂，用于创建 Channel 对象。
     private volatile ChannelFactory<? extends C> channelFactory;
+
+    //todo 本地地址
     private volatile SocketAddress localAddress;
+
+    //todo 可选项集合
     private final Map<ChannelOption<?>, Object> options = new LinkedHashMap<ChannelOption<?>, Object>();
+
+    //todo 属性集合
     private final Map<AttributeKey<?>, Object> attrs = new LinkedHashMap<AttributeKey<?>, Object>();
+
+    //todo 处理器
     private volatile ChannelHandler handler;
 
     AbstractBootstrap() {
@@ -67,9 +87,14 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
         channelFactory = bootstrap.channelFactory;
         handler = bootstrap.handler;
         localAddress = bootstrap.localAddress;
+
+
+        //todo 参数的 options 和 attrs 属性，可能在另外的线程被修改 用synchronized
         synchronized (bootstrap.options) {
             options.putAll(bootstrap.options);
         }
+
+        //todo 参数的 options 和 attrs 属性，可能在另外的线程被修改 用synchronized
         synchronized (bootstrap.attrs) {
             attrs.putAll(bootstrap.attrs);
         }
@@ -79,8 +104,11 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
      * The {@link EventLoopGroup} which is used to handle all the events for the to-be-created
      * {@link Channel}
      */
+    //todo 设置 EventLoopGroup 到 group 中
     public B group(EventLoopGroup group) {
         ObjectUtil.checkNotNull(group, "group");
+
+        //todo // 不允许重复设置
         if (this.group != null) {
             throw new IllegalStateException("group set already");
         }
@@ -88,27 +116,49 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
         return self();
     }
 
+    //todo 返回自己。
     @SuppressWarnings("unchecked")
     private B self() {
         return (B) this;
     }
 
+
     /**
+     *
+     * todo 设置要被实例化的 Channel 的类
      * The {@link Class} which is used to create {@link Channel} instances from.
      * You either use this or {@link #channelFactory(io.netty.channel.ChannelFactory)} if your
      * {@link Channel} implementation has no no-args constructor.
      */
     public B channel(Class<? extends C> channelClass) {
-        return channelFactory(new ReflectiveChannelFactory<C>(
-                ObjectUtil.checkNotNull(channelClass, "channelClass")
-        ));
+
+
+        return channelFactory(
+
+
+                //todo 虽然传入的 channelClass 参数，
+                //     但是会使用 io.netty.channel.ReflectiveChannelFactory 进行封装。
+                new ReflectiveChannelFactory<C>(
+
+                     ObjectUtil.checkNotNull(channelClass, "channelClass")
+
+
+                )
+
+
+        );
+
     }
 
     /**
+     *
+     * todo 从 ChannelFactory 使用的包名，我们就可以很容易的判断，
+     *   最初 ChannelFactory 在 bootstrap 中，后重构到 channel 包中。
      * @deprecated Use {@link #channelFactory(io.netty.channel.ChannelFactory)} instead.
      */
     @Deprecated
     public B channelFactory(ChannelFactory<? extends C> channelFactory) {
+
         ObjectUtil.checkNotNull(channelFactory, "channelFactory");
         if (this.channelFactory != null) {
             throw new IllegalStateException("channelFactory set already");
@@ -130,6 +180,9 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
         return channelFactory((ChannelFactory<C>) channelFactory);
     }
 
+
+
+    //todo #localAddress(...) 方法，设置创建 Channel 的本地地址。有四个重载的方法
     /**
      * The {@link SocketAddress} which is used to bind the local "end" to.
      */
@@ -160,19 +213,26 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
     }
 
     /**
+     *
+     * todo 设置创建 Channel 的可选项。
      * Allow to specify a {@link ChannelOption} which is used for the {@link Channel} instances once they got
      * created. Use a value of {@code null} to remove a previous set {@link ChannelOption}.
      */
     public <T> B option(ChannelOption<T> option, T value) {
         ObjectUtil.checkNotNull(option, "option");
+
+        //todo  空，意味着移除
         if (value == null) {
             synchronized (options) {
                 options.remove(option);
             }
         } else {
+
+            //todo 非空，进行修改
             synchronized (options) {
                 options.put(option, value);
             }
+
         }
         return self();
     }
@@ -183,17 +243,22 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
      */
     public <T> B attr(AttributeKey<T> key, T value) {
         ObjectUtil.checkNotNull(key, "key");
+        //todo  空，意味着移除
         if (value == null) {
             synchronized (attrs) {
                 attrs.remove(key);
             }
         } else {
+            //todo 非空，进行修改
             synchronized (attrs) {
                 attrs.put(key, value);
             }
         }
         return self();
     }
+
+
+
 
     /**
      * Validate all the parameters. Sub-classes may override this, but should
@@ -219,6 +284,8 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
     public abstract B clone();
 
     /**
+     *
+     * todo 初始化并注册一个 Channel 对象，并返回一个 ChannelFuture 对象。
      * Create a new {@link Channel} and register it with an {@link EventLoop}.
      */
     public ChannelFuture register() {
@@ -230,11 +297,13 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
      * Create a new {@link Channel} and bind it.
      */
     public ChannelFuture bind() {
+        //todo   校验服务启动需要的必要参数
         validate();
         SocketAddress localAddress = this.localAddress;
         if (localAddress == null) {
             throw new IllegalStateException("localAddress not set");
         }
+        // todo  绑定本地地址( 包括端口 )
         return doBind(localAddress);
     }
 
@@ -268,17 +337,34 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
     }
 
     private ChannelFuture doBind(final SocketAddress localAddress) {
+
+        //todo 初始化并注册一个 Channel 对象，因为注册是异步的过程，所以返回一个 ChannelFuture 对象。
         final ChannelFuture regFuture = initAndRegister();
+
+
         final Channel channel = regFuture.channel();
+
+
+        // todo 若发生异常，直接进行返回。
         if (regFuture.cause() != null) {
             return regFuture;
         }
 
+        //todo 绑定 Channel 的端口，并注册 Channel 到 SelectionKey 中。
         if (regFuture.isDone()) {
+
+            // 到这一步我们知道, 注册成功完成
             // At this point we know that the registration was complete and successful.
             ChannelPromise promise = channel.newPromise();
+
+
+            //todo 绑定 Channel 的端口，并注册 Channel 到 SelectionKey 中。
             doBind0(regFuture, channel, localAddress, promise);
+
+
             return promise;
+
+
         } else {
             // Registration future is almost always fulfilled already, but just in case it's not.
             final PendingRegistrationPromise promise = new PendingRegistrationPromise(channel);
@@ -295,35 +381,55 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
                         // See https://github.com/netty/netty/issues/2586
                         promise.registered();
 
+
+                        //todo 绑定 Channel 的端口，并注册 Channel 到 SelectionKey 中。
                         doBind0(regFuture, channel, localAddress, promise);
-                    }
+
+
                 }
-            });
+            }});
             return promise;
         }
     }
 
+
+    //todo 初始化并注册一个 Channel 对象，并返回一个 ChannelFuture 对象。
     final ChannelFuture initAndRegister() {
         Channel channel = null;
         try {
+            // todo 创建 Channel 对象 m
+            //  例:  会使用 ReflectiveChannelFactory 创建 NioServerSocketChannel 对象。
             channel = channelFactory.newChannel();
+
+            //todo 初始化 Channel 配置
             init(channel);
+
+
         } catch (Throwable t) {
+            //todo  已创建 Channel 对象
             if (channel != null) {
                 // channel can be null if newChannel crashed (eg SocketException("too many open files"))
+                //todo 强制关闭
                 channel.unsafe().closeForcibly();
                 // as the Channel is not registered yet we need to force the usage of the GlobalEventExecutor
                 return new DefaultChannelPromise(channel, GlobalEventExecutor.INSTANCE).setFailure(t);
             }
+
             // as the Channel is not registered yet we need to force the usage of the GlobalEventExecutor
             return new DefaultChannelPromise(new FailedChannel(), GlobalEventExecutor.INSTANCE).setFailure(t);
         }
 
+
+        //todo 注册 Channel 到 EventLoopGroup 中
         ChannelFuture regFuture = config().group().register(channel);
+
         if (regFuture.cause() != null) {
+
             if (channel.isRegistered()) {
                 channel.close();
+
             } else {
+                //todo 强制关闭 Channel
                 channel.unsafe().closeForcibly();
             }
         }
@@ -342,18 +448,36 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
 
     abstract void init(Channel channel) throws Exception;
 
+
+    //todo    #doBind0(...) 方法，执行 Channel 的端口绑定逻辑
     private static void doBind0(
             final ChannelFuture regFuture, final Channel channel,
             final SocketAddress localAddress, final ChannelPromise promise) {
 
-        // This method is invoked before channelRegistered() is triggered.  Give user handlers a chance to set up
+
+
+
+        //todo  在触发 channelRegistered（）之前调用此方法。
+        //      为用户在channelRegistered之前,为处理程序提供设置pipeline 机会
+        //
+
+        // This method is invoked before channelRegistered() is triggered.
+        // Give user handlers a chance to set up
         // the pipeline in its channelRegistered() implementation.
+
+
+        //todo 调用 EventLoop 执行 Channel 的端口绑定逻辑。
         channel.eventLoop().execute(new Runnable() {
             @Override
             public void run() {
+
+                // todo 注册成功，绑定端口
                 if (regFuture.isSuccess()) {
+
+                    //todo 调用channel 的bind 方法.
                     channel.bind(localAddress, promise).addListener(ChannelFutureListener.CLOSE_ON_FAILURE);
                 } else {
+                    // todo 注册失败，回调通知 promise 异常
                     promise.setFailure(regFuture.cause());
                 }
             }

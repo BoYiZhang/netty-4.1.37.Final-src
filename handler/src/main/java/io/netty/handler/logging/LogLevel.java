@@ -27,6 +27,8 @@ public enum LogLevel {
     WARN(InternalLogLevel.WARN),
     ERROR(InternalLogLevel.ERROR);
 
+
+    //todo Netty 内部日志级别
     private final InternalLogLevel internalLevel;
 
     LogLevel(InternalLogLevel internalLevel) {

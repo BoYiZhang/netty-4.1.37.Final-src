@@ -128,45 +128,79 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
             }
         }
 
+        //todo 读取新的写入数据。
         @Override
         public final void read() {
             final ChannelConfig config = config();
+
+            //todo 若 inputClosedSeenErrorOnRead = true ，
+            // 移除对 SelectionKey.OP_READ 事件的感兴趣。
             if (shouldBreakReadReady(config)) {
                 clearReadPending();
                 return;
             }
             final ChannelPipeline pipeline = pipeline();
+
+
             final ByteBufAllocator allocator = config.getAllocator();
+
+            //todo 获得 RecvByteBufAllocator.Handle 对象
             final RecvByteBufAllocator.Handle allocHandle = recvBufAllocHandle();
+
+            //todo 重置 RecvByteBufAllocator.Handle 对象
             allocHandle.reset(config);
 
             ByteBuf byteBuf = null;
+
+            //todo 是否关闭连接
             boolean close = false;
             try {
                 do {
+
+                    //todo 申请 ByteBuf 对象
                     byteBuf = allocHandle.allocate(allocator);
+
+                    //todo 读取数据
+                    // 设置最后读取字节数
                     allocHandle.lastBytesRead(doReadBytes(byteBuf));
+
+                    //todo 未读取到数据
                     if (allocHandle.lastBytesRead() <= 0) {
                         // nothing was read. release the buffer.
+
+                        //todo 释放 ByteBuf 对象
                         byteBuf.release();
+                        //todo 置空 ByteBuf 对象
                         byteBuf = null;
+                        //todo 如果最后读取的字节为小于 0 ，说明对端已经关闭
                         close = allocHandle.lastBytesRead() < 0;
                         if (close) {
                             // There is nothing left to read as we received an EOF.
                             readPending = false;
                         }
+                        //todo 结束循环
                         break;
                     }
 
+                    //todo 读取消息数量 + localRead
                     allocHandle.incMessagesRead(1);
                     readPending = false;
+
+                    //todo 触发 Channel read 事件到 pipeline 中。
                     pipeline.fireChannelRead(byteBuf);
+                    //todo 置空 ByteBuf 对象
                     byteBuf = null;
+
+                    //todo 循环判断是否继续读取
                 } while (allocHandle.continueReading());
 
+                //todo 读取完成
                 allocHandle.readComplete();
+
+                //todo 触发 Channel readComplete 事件到 pipeline 中。
                 pipeline.fireChannelReadComplete();
 
+                //todo 关闭客户端的连接
                 if (close) {
                     closeOnRead(pipeline);
                 }
@@ -249,10 +283,17 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
 
     @Override
     protected void doWrite(ChannelOutboundBuffer in) throws Exception {
+
+        // todo 获得自旋写入次数
         int writeSpinCount = config().getWriteSpinCount();
         do {
             Object msg = in.current();
+
+            //todo 内存队列为空，结束循环，直接返回
             if (msg == null) {
+
+                //todo 取消对 SelectionKey.OP_WRITE 的感兴趣
+
                 // Wrote all messages.
                 clearOpWrite();
                 // Directly return here so incompleteWrite(...) is not called.
@@ -266,12 +307,15 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
 
     @Override
     protected final Object filterOutboundMessage(Object msg) {
+        //  ByteBuf 的情况
         if (msg instanceof ByteBuf) {
             ByteBuf buf = (ByteBuf) msg;
+            //todo 已经是内存 ByteBuf
             if (buf.isDirect()) {
                 return msg;
             }
 
+            //todo 非内存 ByteBuf ，需要进行创建封装
             return newDirectBuffer(buf);
         }
 

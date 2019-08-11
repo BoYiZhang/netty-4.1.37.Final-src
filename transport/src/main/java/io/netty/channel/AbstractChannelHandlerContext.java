@@ -56,7 +56,11 @@ import static io.netty.channel.ChannelHandlerMask.mask;
 abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, ResourceLeakHint {
 
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(AbstractChannelHandlerContext.class);
+
+    //todo 上一个节点
     volatile AbstractChannelHandlerContext next;
+
+    //todo 下一个节点
     volatile AbstractChannelHandlerContext prev;
 
     private static final AtomicIntegerFieldUpdater<AbstractChannelHandlerContext> HANDLER_STATE_UPDATER =
@@ -65,29 +69,45 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
     /**
      * {@link ChannelHandler#handlerAdded(ChannelHandlerContext)} is about to be called.
      */
+    //todo 添加准备中
     private static final int ADD_PENDING = 1;
     /**
      * {@link ChannelHandler#handlerAdded(ChannelHandlerContext)} was called.
      */
+    //todo 已添加
     private static final int ADD_COMPLETE = 2;
     /**
      * {@link ChannelHandler#handlerRemoved(ChannelHandlerContext)} was called.
      */
+    //todo 已移除
     private static final int REMOVE_COMPLETE = 3;
     /**
      * Neither {@link ChannelHandler#handlerAdded(ChannelHandlerContext)}
      * nor {@link ChannelHandler#handlerRemoved(ChannelHandlerContext)} was called.
      */
+    //todo 初始化
     private static final int INIT = 0;
 
+
+    //todo 所属 pipeline
     private final DefaultChannelPipeline pipeline;
+
+    //todo  名字
     private final String name;
+
+    //todo 是否使用有序的 EventExecutor ( {@link #executor} )，即 OrderedEventExecutor
     private final boolean ordered;
+
+
     private final int executionMask;
 
     // Will be set to null if no child executor should be used, otherwise it will be set to the
     // child executor.
+
+    //todo EventExecutor 对象
     final EventExecutor executor;
+
+    //todo 成功的 Promise 对象
     private ChannelFuture succeededFuture;
 
     // Lazily instantiated tasks used to trigger events to a handler with different executor.
@@ -201,7 +221,9 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
 
     @Override
     public ChannelHandlerContext fireChannelActive() {
+        //todo 获得下一个 Inbound 节点的执行器
         invokeChannelActive(findContextInbound(MASK_CHANNEL_ACTIVE));
+
         return this;
     }
 
@@ -222,6 +244,7 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
     private void invokeChannelActive() {
         if (invokeHandler()) {
             try {
+                //todo  DefaultChannelPipeline#channelActive
                 ((ChannelInboundHandler) handler()).channelActive(this);
             } catch (Throwable t) {
                 notifyHandlerException(t);
@@ -482,9 +505,13 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
             return promise;
         }
 
+        //todo 获得下一个 Outbound 节点
         final AbstractChannelHandlerContext next = findContextOutbound(MASK_BIND);
+        //todo 获得下一个 Outbound 节点的执行器
         EventExecutor executor = next.executor();
         if (executor.inEventLoop()) {
+
+            //todo 调用下一个 Outbound 节点的 bind 方法
             next.invokeBind(localAddress, promise);
         } else {
             safeExecute(executor, new Runnable() {
@@ -498,13 +525,18 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
     }
 
     private void invokeBind(SocketAddress localAddress, ChannelPromise promise) {
+
+        //todo  判断是否符合的 ChannelHandler
         if (invokeHandler()) {
             try {
+
+                //todo 调用该 ChannelHandler 的 bind 方法
                 ((ChannelOutboundHandler) handler()).bind(this, localAddress, promise);
             } catch (Throwable t) {
                 notifyOutboundHandlerException(t, promise);
             }
         } else {
+            //todo 跳过，传播 Outbound 事件给下一个节点
             bind(localAddress, promise);
         }
     }
@@ -667,7 +699,9 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
         final AbstractChannelHandlerContext next = findContextOutbound(MASK_READ);
         EventExecutor executor = next.executor();
         if (executor.inEventLoop()) {
+            //todo 读
             next.invokeRead();
+
         } else {
             Tasks tasks = next.invokeTasks;
             if (tasks == null) {
@@ -721,15 +755,22 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
 
     @Override
     public ChannelHandlerContext flush() {
+
+        //todo 获得下一个 MASK_FLUSH 节点
         final AbstractChannelHandlerContext next = findContextOutbound(MASK_FLUSH);
         EventExecutor executor = next.executor();
+        //todo 在 EventLoop 的线程中
         if (executor.inEventLoop()) {
+            //todo 执行 flush 事件到下一个节点
             next.invokeFlush();
         } else {
+            //todo 不在 EventLoop 的线程中
+            //todo 创建 flush 任务
             Tasks tasks = next.invokeTasks;
             if (tasks == null) {
                 next.invokeTasks = tasks = new Tasks(next);
             }
+            //todo 提交到 EventLoop 的线程中，执行该任务
             safeExecute(executor, tasks.invokeFlushTask, channel().voidPromise(), null);
         }
 
@@ -768,9 +809,12 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
     }
 
     private void write(Object msg, boolean flush, ChannelPromise promise) {
+        //todo 消息( 数据 )为空，抛出异常
         ObjectUtil.checkNotNull(msg, "msg");
         try {
+            //todo 判断是否为合法的 Promise 对象
             if (isNotValidPromise(promise, true)) {
+                //todo 释放消息( 数据 )相关的资源
                 ReferenceCountUtil.release(msg);
                 // cancelled
                 return;
@@ -780,23 +824,35 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
             throw e;
         }
 
+
         final AbstractChannelHandlerContext next = findContextOutbound(flush ?
                 (MASK_WRITE | MASK_FLUSH) : MASK_WRITE);
+
+        //todo 记录 Record 记录
         final Object m = pipeline.touch(msg, next);
+
         EventExecutor executor = next.executor();
+
+        //todo 在 EventLoop 的线程中
         if (executor.inEventLoop()) {
             if (flush) {
+                //todo 执行 writeAndFlush 事件到下一个节点
                 next.invokeWriteAndFlush(m, promise);
             } else {
+                //todo 执行 write 事件到下一个节点
                 next.invokeWrite(m, promise);
             }
         } else {
             final AbstractWriteTask task;
+            //todo 创建 writeAndFlush 任务
             if (flush) {
                 task = WriteAndFlushTask.newInstance(next, m, promise);
             }  else {
+                //todo 创建 write 任务
                 task = WriteTask.newInstance(next, m, promise);
             }
+
+            //todo 提交到 EventLoop 的线程中，执行该任务
             if (!safeExecute(executor, task, promise, m)) {
                 // We failed to submit the AbstractWriteTask. We need to cancel it so we decrement the pending bytes
                 // and put it back in the Recycler for re-use later.
@@ -917,6 +973,7 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
         do {
             ctx = ctx.next;
         } while ((ctx.executionMask & mask) == 0);
+
         return ctx;
     }
 
@@ -937,9 +994,12 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
         handlerState = REMOVE_COMPLETE;
     }
 
+    //todo cas 自旋 设置状态 ADD_COMPLETE
     final boolean setAddComplete() {
         for (;;) {
             int oldState = handlerState;
+
+
             if (oldState == REMOVE_COMPLETE) {
                 return false;
             }
@@ -1034,17 +1094,30 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
 
     abstract static class AbstractWriteTask implements Runnable {
 
+
+        //todo 提交任务时，是否计算 AbstractWriteTask 对象的自身占用内存大小 默认: true
         private static final boolean ESTIMATE_TASK_SIZE_ON_SUBMIT =
                 SystemPropertyUtil.getBoolean("io.netty.transport.estimateSizeOnSubmit", true);
 
+        //todo 每个 AbstractWriteTask 对象自身占用内存的大小 48 字节
+        //     对象头 16 字节 ,  3 个引用字段 3*8 = 24字节,  1 个 int fields 4 字节, padding 补齐 8 位字节的整数倍 4 字节.
+        //     16+24+4+4 = 48
         // Assuming a 64-bit JVM, 16 bytes object header, 3 reference fields and one int field, plus alignment
         private static final int WRITE_TASK_OVERHEAD =
                 SystemPropertyUtil.getInt("io.netty.transport.writeTaskSizeOverhead", 48);
 
         private final Recycler.Handle<AbstractWriteTask> handle;
+
+        //todo pipeline 中的节点
         private AbstractChannelHandlerContext ctx;
+
+        //todo 消息( 数据 )
         private Object msg;
+
+        //todo Promise 对象
         private ChannelPromise promise;
+
+        //todo 对象大小
         private int size;
 
         @SuppressWarnings("unchecked")
@@ -1057,9 +1130,11 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
             task.ctx = ctx;
             task.msg = msg;
             task.promise = promise;
-
+            //TODO 计算 AbstractWriteTask 对象大小 <1>
             if (ESTIMATE_TASK_SIZE_ON_SUBMIT) {
                 task.size = ctx.pipeline.estimatorHandle().size(msg) + WRITE_TASK_OVERHEAD;
+
+                //TODO 增加 ChannelOutboundBuffer 的 totalPendingSize 属性
                 ctx.pipeline.incrementPendingOutboundBytes(task.size);
             } else {
                 task.size = 0;
@@ -1070,6 +1145,8 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
         public final void run() {
             try {
                 decrementPendingOutboundBytes();
+
+
                 write(ctx, msg, promise);
             } finally {
                 recycle();
@@ -1084,6 +1161,7 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
             }
         }
 
+        //TODO 减少 ChannelOutboundBuffer 的 totalPendingSize 属性
         private void decrementPendingOutboundBytes() {
             if (ESTIMATE_TASK_SIZE_ON_SUBMIT) {
                 ctx.pipeline.decrementPendingOutboundBytes(size);

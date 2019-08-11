@@ -27,7 +27,11 @@ import java.util.concurrent.atomic.AtomicLong;
 
 @SuppressWarnings("ComparableImplementedButEqualsNotOverridden")
 final class ScheduledFutureTask<V> extends PromiseTask<V> implements ScheduledFuture<V>, PriorityQueueNode {
+
+    //todo 任务序号生成器，通过 AtomicLong 实现递增发号
     private static final AtomicLong nextTaskId = new AtomicLong();
+
+    //todo 定时任务时间起点
     private static final long START_TIME = System.nanoTime();
 
     static long nanoTime() {
@@ -97,6 +101,8 @@ final class ScheduledFutureTask<V> extends PromiseTask<V> implements ScheduledFu
         return unit.convert(delayNanos(), TimeUnit.NANOSECONDS);
     }
 
+
+    //todo 比较截止时间, 截止时间小的在前面, 大的在后面, 如果时间相等, 比较 id
     @Override
     public int compareTo(Delayed o) {
         if (this == o) {
@@ -123,22 +129,33 @@ final class ScheduledFutureTask<V> extends PromiseTask<V> implements ScheduledFu
         assert executor().inEventLoop();
         try {
             if (periodNanos == 0) {
+                //todo // 设置任务不可取消
                 if (setUncancellableInternal()) {
+                    // todo 执行任务
                     V result = task.call();
+                    // todo 通知任务执行成功
                     setSuccessInternal(result);
                 }
             } else {
+                // todo 判断任务并未取消
                 // check if is done as it may was cancelled
                 if (!isCancelled()) {
+
+                    //todo 执行任务
                     task.call();
                     if (!executor().isShutdown()) {
+
+                        //todo 计算下次执行时间
                         long p = periodNanos;
                         if (p > 0) {
                             deadlineNanos += p;
                         } else {
                             deadlineNanos = nanoTime() - p;
                         }
+                        //todo   判断任务并未取消
                         if (!isCancelled()) {
+
+                            //todo 重新添加到任务队列，等待下次定时执行
                             // scheduledTaskQueue can never be null as we lazy init it before submit the task!
                             Queue<ScheduledFutureTask<?>> scheduledTaskQueue =
                                     ((AbstractScheduledEventExecutor) executor()).scheduledTaskQueue;

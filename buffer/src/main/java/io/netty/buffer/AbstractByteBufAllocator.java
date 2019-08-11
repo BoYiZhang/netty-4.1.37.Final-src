@@ -27,9 +27,20 @@ import io.netty.util.internal.StringUtil;
  * Skeletal {@link ByteBufAllocator} implementation to extend.
  */
 public abstract class AbstractByteBufAllocator implements ByteBufAllocator {
+
+
+    //todo 默认容量大小
     static final int DEFAULT_INITIAL_CAPACITY = 256;
+
+    //todo 默认最大容量大小
     static final int DEFAULT_MAX_CAPACITY = Integer.MAX_VALUE;
+
+
+    //todo Composite ByteBuf 可包含的 ByteBuf 的最大数量
     static final int DEFAULT_MAX_COMPONENTS = 16;
+
+
+    //todo 扩容分界线，4M
     static final int CALCULATE_THRESHOLD = 1048576 * 4; // 4 MiB page
 
     static {
@@ -81,6 +92,8 @@ public abstract class AbstractByteBufAllocator implements ByteBufAllocator {
     }
 
     private final boolean directByDefault;
+
+
     private final ByteBuf emptyBuf;
 
     /**
@@ -255,12 +268,15 @@ public abstract class AbstractByteBufAllocator implements ByteBufAllocator {
                     "minNewCapacity: %d (expected: not greater than maxCapacity(%d)",
                     minNewCapacity, maxCapacity));
         }
+
+
         final int threshold = CALCULATE_THRESHOLD; // 4 MiB page
 
         if (minNewCapacity == threshold) {
             return threshold;
         }
 
+        // todo 超过 threshold ，增加 threshold ，不超过 maxCapacity 大小。
         // If over threshold, do not double but just increase by threshold.
         if (minNewCapacity > threshold) {
             int newCapacity = minNewCapacity / threshold * threshold;
@@ -272,6 +288,7 @@ public abstract class AbstractByteBufAllocator implements ByteBufAllocator {
             return newCapacity;
         }
 
+         // todo 未超过 threshold ，从 64 开始两倍计算，不超过 4M 大小。
         // Not over threshold. Double up to 4 MiB, starting from 64.
         int newCapacity = 64;
         while (newCapacity < minNewCapacity) {

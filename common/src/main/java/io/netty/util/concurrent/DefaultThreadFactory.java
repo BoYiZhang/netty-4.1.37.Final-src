@@ -63,6 +63,7 @@ public class DefaultThreadFactory implements ThreadFactory {
         this(toPoolName(poolType), daemon, priority);
     }
 
+    //todo 生成线程池的名字
     public static String toPoolName(Class<?> poolType) {
         if (poolType == null) {
             throw new NullPointerException("poolType");
@@ -76,7 +77,9 @@ public class DefaultThreadFactory implements ThreadFactory {
                 return poolName.toLowerCase(Locale.US);
             default:
                 if (Character.isUpperCase(poolName.charAt(0)) && Character.isLowerCase(poolName.charAt(1))) {
+                    //todo 首字母小写
                     return Character.toLowerCase(poolName.charAt(0)) + poolName.substring(1);
+
                 } else {
                     return poolName;
                 }
@@ -92,6 +95,7 @@ public class DefaultThreadFactory implements ThreadFactory {
                     "priority: " + priority + " (expected: Thread.MIN_PRIORITY <= priority <= Thread.MAX_PRIORITY)");
         }
 
+        //todo 创建线程浅醉  nioEventLoop-1-xx
         prefix = poolName + '-' + poolId.incrementAndGet() + '-';
         this.daemon = daemon;
         this.priority = priority;
@@ -103,8 +107,11 @@ public class DefaultThreadFactory implements ThreadFactory {
                 Thread.currentThread().getThreadGroup() : System.getSecurityManager().getThreadGroup());
     }
 
+    //TODO 创建一个线程
     @Override
     public Thread newThread(Runnable r) {
+
+        //todo 创建一个线程   名字:  nioEventLoop-1-xx
         Thread t = newThread(FastThreadLocalRunnable.wrap(r), prefix + nextId.incrementAndGet());
         try {
             if (t.isDaemon() != daemon) {
@@ -121,6 +128,8 @@ public class DefaultThreadFactory implements ThreadFactory {
     }
 
     protected Thread newThread(Runnable r, String name) {
+        //todo 封装的线程 ???
+
         return new FastThreadLocalThread(threadGroup, r, name);
     }
 }

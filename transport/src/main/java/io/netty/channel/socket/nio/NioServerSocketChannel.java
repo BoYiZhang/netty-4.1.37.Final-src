@@ -46,10 +46,15 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel
                              implements io.netty.channel.socket.ServerSocketChannel {
 
     private static final ChannelMetadata METADATA = new ChannelMetadata(false, 16);
-    private static final SelectorProvider DEFAULT_SELECTOR_PROVIDER = SelectorProvider.provider();
+
+
+
 
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(NioServerSocketChannel.class);
 
+
+    //todo 在构造方法中，调用 #newSocket(SelectorProvider provider) 方法，
+    //     创建 NIO 的 ServerSocketChannel 对象。
     private static ServerSocketChannel newSocket(SelectorProvider provider) {
         try {
             /**
@@ -65,9 +70,16 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel
         }
     }
 
+    //todo config 属性，Channel 对应的配置对象。每种 Channel 实现类，也会对应一个 ChannelConfig 实现类。
     private final ServerSocketChannelConfig config;
 
+
+    //todo DEFAULT_SELECTOR_PROVIDER 静态属性，默认的 SelectorProvider 实现类。
+    private static final SelectorProvider DEFAULT_SELECTOR_PROVIDER = SelectorProvider.provider();
+
+
     /**
+     * NioServerSocketChannel 构造函数
      * Create a new instance
      */
     public NioServerSocketChannel() {
@@ -85,7 +97,9 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel
      * Create a new instance using the given {@link ServerSocketChannel}.
      */
     public NioServerSocketChannel(ServerSocketChannel channel) {
+        //todo 调用父类构造函数
         super(null, channel, SelectionKey.OP_ACCEPT);
+        //todo 配置函数
         config = new NioServerSocketChannelConfig(this, javaChannel().socket());
     }
 
@@ -137,21 +151,26 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel
 
     @Override
     protected void doClose() throws Exception {
+        //todo 执行 Java 原生 NIO SocketServerChannel 关闭。
         javaChannel().close();
     }
 
     @Override
     protected int doReadMessages(List<Object> buf) throws Exception {
+
+        //todo 获取 jdk channel
         SocketChannel ch = SocketUtils.accept(javaChannel());
 
         try {
             if (ch != null) {
+                //todo 创建 Netty NioSocketChannel 对象
                 buf.add(new NioSocketChannel(this, ch));
                 return 1;
             }
         } catch (Throwable t) {
             logger.warn("Failed to create a new channel from an accepted socket.", t);
 
+            //todo 发生异常，关闭客户端的 SocketChannel 连接
             try {
                 ch.close();
             } catch (Throwable t2) {

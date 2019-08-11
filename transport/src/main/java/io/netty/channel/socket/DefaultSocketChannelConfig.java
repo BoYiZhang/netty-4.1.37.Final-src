@@ -43,12 +43,17 @@ public class DefaultSocketChannelConfig extends DefaultChannelConfig
      * Creates a new instance.
      */
     public DefaultSocketChannelConfig(SocketChannel channel, Socket javaSocket) {
+
         super(channel);
+
         if (javaSocket == null) {
             throw new NullPointerException("javaSocket");
         }
+
+        //todo 设置javaSocket
         this.javaSocket = javaSocket;
 
+        //todo 禁止 TcpNoDelay 算法, 降低延迟.
         // Enable TCP_NODELAY by default if possible.
         if (PlatformDependent.canEnableTcpNoDelayByDefault()) {
             try {

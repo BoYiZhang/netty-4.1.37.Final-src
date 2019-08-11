@@ -36,15 +36,25 @@ import java.util.List;
 public class LineBasedFrameDecoder extends ByteToMessageDecoder {
 
     /** Maximum length of a frame we're willing to decode.  */
+    //todo 解析的最大长度, 超过这个长度,可能会被丢弃...
     private final int maxLength;
     /** Whether or not to throw an exception as soon as we exceed maxLength. */
+
+    //todo 是否立即抛出异常
     private final boolean failFast;
+
+    //todo 解析出的数据,是否包含分隔符   true 不包含  false 包含
     private final boolean stripDelimiter;
 
+    //todo 是否丢弃 , 如果超过最大长度的话
     /** True if we're discarding input because we're already over maxLength.  */
     private boolean discarding;
+
+
+    //todo  上一次丢弃字符数量
     private int discardedBytes;
 
+    //todo 最后扫描的位置
     /** Last scan position. */
     private int offset;
 
@@ -96,13 +106,24 @@ public class LineBasedFrameDecoder extends ByteToMessageDecoder {
      *                          be created.
      */
     protected Object decode(ChannelHandlerContext ctx, ByteBuf buffer) throws Exception {
+
+
+        //todo 找到分隔符的下标  如果是 [\n] 的前面不包含 [\r] 则 返回 [\n] 的下标, 否则返回 [\r] 的下标
         final int eol = findEndOfLine(buffer);
+
+
         if (!discarding) {
+            //todo 找到分隔符下标
             if (eol >= 0) {
                 final ByteBuf frame;
+
+                //todo 计算长度
                 final int length = eol - buffer.readerIndex();
+
+                //todo 计算分隔符长度 入股是[\r]开头的话, 长度是 2个字符 [ \r\n ]   否则的话是 1个字符 [\n]
                 final int delimLength = buffer.getByte(eol) == '\r'? 2 : 1;
 
+                //todo 如果超过读取的最大限制, 则将数据丢掉, 更新指针. 返回 null
                 if (length > maxLength) {
                     buffer.readerIndex(eol + delimLength);
                     fail(ctx, length);
@@ -110,40 +131,65 @@ public class LineBasedFrameDecoder extends ByteToMessageDecoder {
                 }
 
                 if (stripDelimiter) {
+                    //todo stripDelimiter: true  返回的数据不需要包含分隔符
                     frame = buffer.readRetainedSlice(length);
+                    //todo 跳过分隔符
                     buffer.skipBytes(delimLength);
                 } else {
+                    //todo stripDelimiter: false  返回的数据需要包含分隔符
                     frame = buffer.readRetainedSlice(length + delimLength);
                 }
-
-                return frame;
+                //todo 返回值 ByteBuf
+                return frame ;
             } else {
+                //todo 没有找到换行符
                 final int length = buffer.readableBytes();
+
+                //todo 超过最大解析长度, 丢弃
                 if (length > maxLength) {
                     discardedBytes = length;
                     buffer.readerIndex(buffer.writerIndex());
                     discarding = true;
                     offset = 0;
+                    //todo   failFast :  true 立即抛出异常.
                     if (failFast) {
                         fail(ctx, "over " + discardedBytes);
                     }
                 }
+
+                //todo 啥也没解析到
                 return null;
             }
         } else {
+            //todo 丢弃模式
             if (eol >= 0) {
+                //todo 计算长度
                 final int length = discardedBytes + eol - buffer.readerIndex();
+
+                //todo 计算分隔符长度 入股是[\r]开头的话, 长度是 2个字符 [ \r\n ]   否则的话是 1个字符 [\n]
                 final int delimLength = buffer.getByte(eol) == '\r'? 2 : 1;
+
+                //todo 读取数据 直接带分隔符读取 ?????
                 buffer.readerIndex(eol + delimLength);
+
+                //todo 重试
                 discardedBytes = 0;
+                //todo 设置非丢弃模式
                 discarding = false;
+
                 if (!failFast) {
+                    //todo 超过最大长度, 抛出异常
                     fail(ctx, length);
                 }
             } else {
+
+                //todo 没有读到数据, 更新discardedBytes 字符
                 discardedBytes += buffer.readableBytes();
+
+                //todo 更新读指针
                 buffer.readerIndex(buffer.writerIndex());
                 // We skip everything in the buffer, we need to set the offset to 0 again.
+
                 offset = 0;
             }
             return null;
@@ -156,6 +202,8 @@ public class LineBasedFrameDecoder extends ByteToMessageDecoder {
 
     private void fail(final ChannelHandlerContext ctx, String length) {
         ctx.fireExceptionCaught(
+
+                //todo 超过最大长度, 抛出异常
                 new TooLongFrameException(
                         "frame length (" + length + ") exceeds the allowed maximum (" + maxLength + ')'));
     }
@@ -166,9 +214,13 @@ public class LineBasedFrameDecoder extends ByteToMessageDecoder {
      */
     private int findEndOfLine(final ByteBuf buffer) {
         int totalLength = buffer.readableBytes();
+
+        //todo 寻找 \n  字节
         int i = buffer.forEachByte(buffer.readerIndex() + offset, totalLength - offset, ByteProcessor.FIND_LF);
+
         if (i >= 0) {
             offset = 0;
+            //todo 如果\n 的前一个字节是 \r 则 i--. 返回\r 的下标
             if (i > 0 && buffer.getByte(i - 1) == '\r') {
                 i--;
             }

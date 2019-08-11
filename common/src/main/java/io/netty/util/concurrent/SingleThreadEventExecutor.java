@@ -44,6 +44,8 @@ import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 
 /**
+ *
+ * todo  即一个 EventExecutor 对应一个线程。
  * Abstract base class for {@link OrderedEventExecutor}'s that execute all its submitted tasks in a single thread.
  *
  */
@@ -55,10 +57,16 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
     private static final InternalLogger logger =
             InternalLoggerFactory.getInstance(SingleThreadEventExecutor.class);
 
+
+    //todo 未开始
     private static final int ST_NOT_STARTED = 1;
+    //todo 已开始
     private static final int ST_STARTED = 2;
+    //todo 正在关闭中
     private static final int ST_SHUTTING_DOWN = 3;
+    //todo 已关闭
     private static final int ST_SHUTDOWN = 4;
+    //todo 已终止
     private static final int ST_TERMINATED = 5;
 
     private static final Runnable WAKEUP_TASK = new Runnable() {
@@ -74,33 +82,59 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         }
     };
 
+    //todo 字段的原子更新器
     private static final AtomicIntegerFieldUpdater<SingleThreadEventExecutor> STATE_UPDATER =
             AtomicIntegerFieldUpdater.newUpdater(SingleThreadEventExecutor.class, "state");
+
+
+    //todo 字段的原子更新器
     private static final AtomicReferenceFieldUpdater<SingleThreadEventExecutor, ThreadProperties> PROPERTIES_UPDATER =
             AtomicReferenceFieldUpdater.newUpdater(
                     SingleThreadEventExecutor.class, ThreadProperties.class, "threadProperties");
 
+    //todo  任务队列
     private final Queue<Runnable> taskQueue;
 
+    //todo 线程
     private volatile Thread thread;
     @SuppressWarnings("unused")
+
+    //todo  线程属性
     private volatile ThreadProperties threadProperties;
+
+    //todo 执行器
     private final Executor executor;
+
+    //todo 线程是否已经打断
     private volatile boolean interrupted;
 
+    //todo  EventLoop 优雅关闭
     private final CountDownLatch threadLock = new CountDownLatch(1);
     private final Set<Runnable> shutdownHooks = new LinkedHashSet<Runnable>();
+
+    //todo 添加任务时，是否唤醒线程
     private final boolean addTaskWakesUp;
+
+    //todo 最大等待执行任务数量，即 {@link #taskQueue} 的队列大小
     private final int maxPendingTasks;
+
+    //todo 拒绝执行处理器
     private final RejectedExecutionHandler rejectedExecutionHandler;
 
+    //todo 最后执行时间
     private long lastExecutionTime;
 
     @SuppressWarnings({ "FieldMayBeFinal", "unused" })
+    //todo 状态
     private volatile int state = ST_NOT_STARTED;
 
+
+    //todo 优雅关闭超时时间，单位：毫秒 TODO 1006 EventLoop 优雅关闭
     private volatile long gracefulShutdownQuietPeriod;
+
+    //todo  优雅关闭开始时间，单位：毫秒 TODO 1006 EventLoop 优雅关闭
     private volatile long gracefulShutdownTimeout;
+
     private long gracefulShutdownStartTime;
 
     private final Promise<?> terminationFuture = new DefaultPromise<Void>(GlobalEventExecutor.INSTANCE);
@@ -173,8 +207,13 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         super(parent);
         this.addTaskWakesUp = addTaskWakesUp;
         this.maxPendingTasks = DEFAULT_MAX_PENDING_EXECUTOR_TASKS;
+
+        //todo 保存线程器
         this.executor = ThreadExecutorMap.apply(executor, this);
+
+        //todo 任务队列
         this.taskQueue = ObjectUtil.checkNotNull(taskQueue, "taskQueue");
+
         rejectedExecutionHandler = ObjectUtil.checkNotNull(rejectedHandler, "rejectedHandler");
     }
 
@@ -218,7 +257,11 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
 
     protected static Runnable pollTaskFrom(Queue<Runnable> taskQueue) {
         for (;;) {
+
+            //todo  获得并移除队首元素。如果获得不到，返回 null
             Runnable task = taskQueue.poll();
+
+            //todo 忽略 WAKEUP_TASK 任务，因为是空任务
             if (task == WAKEUP_TASK) {
                 continue;
             }
@@ -282,12 +325,20 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         }
     }
 
+    //todo 从优先级调度队列中拉取任务
     private boolean fetchFromScheduledTaskQueue() {
+
         long nanoTime = AbstractScheduledEventExecutor.nanoTime();
+
+        //todo 获取任务 时间最小的
         Runnable scheduledTask  = pollScheduledTask(nanoTime);
+
         while (scheduledTask != null) {
+            //todo 将任务添加到普通任务队列
             if (!taskQueue.offer(scheduledTask)) {
                 // No space left in the task queue add it back to the scheduledTaskQueue so we pick it up again.
+
+                //todo 添加普通任务队列失败, 放回调度任务队列
                 scheduledTaskQueue().add((ScheduledFutureTask<?>) scheduledTask);
                 return false;
             }
@@ -330,15 +381,19 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         if (task == null) {
             throw new NullPointerException("task");
         }
+        //todo 消费 task
         if (!offerTask(task)) {
+            //todo 拒绝 task
             reject(task);
         }
     }
 
     final boolean offerTask(Runnable task) {
+        //todo 如果关闭, 直接拒绝 task 抛出异常
         if (isShutdown()) {
             reject();
         }
+        //todo 添加 task
         return taskQueue.offer(task);
     }
 
@@ -363,16 +418,27 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         boolean ranAtLeastOne = false;
 
         do {
+
+            //todo 从优先级调度队列中拉取任务 其实就是将优先级队列中的任务放到普通队列
             fetchedAll = fetchFromScheduledTaskQueue();
+
+            //todo 运行普通队列中的任务
             if (runAllTasksFrom(taskQueue)) {
+                //todo 若有任务执行，则标记为 true
                 ranAtLeastOne = true;
             }
+
+
         } while (!fetchedAll); // keep on processing until we fetched all scheduled tasks.
 
+        //todo 如果执行过任务，则设置最后执行时间
         if (ranAtLeastOne) {
             lastExecutionTime = ScheduledFutureTask.nanoTime();
         }
+
+        //todo 执行所有任务完成的后续方法
         afterRunningAllTasks();
+
         return ranAtLeastOne;
     }
 
@@ -384,13 +450,21 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
      * @return {@code true} if at least one task was executed.
      */
     protected final boolean runAllTasksFrom(Queue<Runnable> taskQueue) {
+        //todo 从任务队列中拉取任务
         Runnable task = pollTaskFrom(taskQueue);
+
+        // todo 获取不到，结束执行，返回 false
         if (task == null) {
             return false;
         }
         for (;;) {
+            //todo 循环 执行任务
             safeExecute(task);
+
+            //todo 获得队头的任务
             task = pollTaskFrom(taskQueue);
+
+            //todo 获取不到，结束执行，返回 true
             if (task == null) {
                 return true;
             }
@@ -402,38 +476,66 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
      * the tasks in the task queue and returns if it ran longer than {@code timeoutNanos}.
      */
     protected boolean runAllTasks(long timeoutNanos) {
+        //todo  从定时任务获得到时间的任务
         fetchFromScheduledTaskQueue();
+
+        //todo 获得队头的任务
         Runnable task = pollTask();
+
+
         if (task == null) {
+            //todo 执行所有任务完成的后续方法
             afterRunningAllTasks();
             return false;
         }
 
+        //todo 计算执行任务截止时间
         final long deadline = ScheduledFutureTask.nanoTime() + timeoutNanos;
+
+        //todo 执行任务计数
         long runTasks = 0;
+
+
         long lastExecutionTime;
+
+        //todo 循环执行任务
         for (;;) {
+
+            //todo 执行任务
             safeExecute(task);
 
+            //todo 计数 +1
             runTasks ++;
+
+            //todo 每隔 64 个任务检查一次时间，因为 nanoTime() 是相对费时的操作
+            // 64 这个值当前是硬编码的，无法配置，可能会成为一个问题。
 
             // Check timeout every 64 tasks because nanoTime() is relatively expensive.
             // XXX: Hard-coded value - will make it configurable if it is really a problem.
             if ((runTasks & 0x3F) == 0) {
+                //todo 重新获得时间
                 lastExecutionTime = ScheduledFutureTask.nanoTime();
+                //todo 超过任务截止时间，结束
                 if (lastExecutionTime >= deadline) {
                     break;
                 }
             }
 
+            //todo 获得队头的任务
             task = pollTask();
+
+            //todo 获取不到，结束执行
             if (task == null) {
+                //todo   重新获得时间
                 lastExecutionTime = ScheduledFutureTask.nanoTime();
                 break;
             }
         }
 
+        //todo 执行所有任务完成的后续方法
         afterRunningAllTasks();
+
+        //todo 设置最后执行时间
         this.lastExecutionTime = lastExecutionTime;
         return true;
     }
@@ -761,14 +863,21 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         if (task == null) {
             throw new NullPointerException("task");
         }
-
+        //todo 当前线程是否是EventLoop 所在的线程
         boolean inEventLoop = inEventLoop();
+
+        //todo 添加任务
         addTask(task);
+
+        //todo 不在EventLoop 所在的线程
         if (!inEventLoop) {
+
+            //todo 启动线程
             startThread();
             if (isShutdown()) {
                 boolean reject = false;
                 try {
+                    //todo 若已经关闭，移除任务，并进行拒绝
                     if (removeTask(task)) {
                         reject = true;
                     }
@@ -907,15 +1016,25 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         executor.execute(new Runnable() {
             @Override
             public void run() {
+                //todo 记录当前线程
                 thread = Thread.currentThread();
+
+                //todo 如果当前线程已经被标记打断，则进行打断操作。
                 if (interrupted) {
                     thread.interrupt();
                 }
 
+                //todo   是否执行成功
                 boolean success = false;
+
+                //todo 更新最后执行时间
                 updateLastExecutionTime();
                 try {
+
+                    //todo 执行任务
                     SingleThreadEventExecutor.this.run();
+
+                    //todo 标记执行成功
                     success = true;
                 } catch (Throwable t) {
                     logger.warn("Unexpected exception from an event executor: ", t);
@@ -946,6 +1065,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
                         }
                     } finally {
                         try {
+                            //todo 清理，释放资源
                             cleanup();
                         } finally {
                             // Lets remove all FastThreadLocals for the Thread as we are about to terminate and notify

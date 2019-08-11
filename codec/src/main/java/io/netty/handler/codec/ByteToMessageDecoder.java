@@ -72,6 +72,8 @@ import java.util.List;
 public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter {
 
     /**
+     *
+     *  todo 合并操作类 , 容量不够扩容, 容量够的话合并.
      * Cumulate {@link ByteBuf}s by merge them into one {@link ByteBuf}'s, using memory copies.
      */
     public static final Cumulator MERGE_CUMULATOR = new Cumulator() {
@@ -88,6 +90,8 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
                     // See:
                     // - https://github.com/netty/netty/issues/2327
                     // - https://github.com/netty/netty/issues/1764
+
+                    //todo 扩容操作
                     buffer = expandCumulation(alloc, cumulation, in.readableBytes());
                 } else {
                     buffer = cumulation;
@@ -261,24 +265,39 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
      */
     protected void handlerRemoved0(ChannelHandlerContext ctx) throws Exception { }
 
+
+    //todo 读取操作
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+
+
         if (msg instanceof ByteBuf) {
+            //todo  验证传递过来的数据是ByteBuf类型的话,进行转码操作
+
+
+            //todo 输出信息  CodecOutputList其实就是一个数组  Object[] array  ...
             CodecOutputList out = CodecOutputList.newInstance();
             try {
+                //todo 获取数据
                 ByteBuf data = (ByteBuf) msg;
                 first = cumulation == null;
+
                 if (first) {
+                    //todo 第一次进入
                     cumulation = data;
                 } else {
+                    //todo 非第一次数据,进行合并操作
                     cumulation = cumulator.cumulate(ctx.alloc(), cumulation, data);
                 }
+
+                //todo 处理数据
                 callDecode(ctx, cumulation, out);
             } catch (DecoderException e) {
                 throw e;
             } catch (Exception e) {
                 throw new DecoderException(e);
             } finally {
+                //todo 释放资源
                 if (cumulation != null && !cumulation.isReadable()) {
                     numReads = 0;
                     cumulation.release();
@@ -290,12 +309,21 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
                     discardSomeReadBytes();
                 }
 
+
+
+
                 int size = out.size();
                 decodeWasNull = !out.insertSinceRecycled();
+
+                //todo 将解析到的对象,进行传播
                 fireChannelRead(ctx, out, size);
+
+                //todo 回收
                 out.recycle();
             }
         } else {
+
+            //todo 不做处理, 直接操作
             ctx.fireChannelRead(msg);
         }
     }
@@ -317,8 +345,11 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
      * Get {@code numElements} out of the {@link CodecOutputList} and forward these through the pipeline.
      */
     static void fireChannelRead(ChannelHandlerContext ctx, CodecOutputList msgs, int numElements) {
+
         for (int i = 0; i < numElements; i ++) {
+            //todo 将每一个对象进行传播
             ctx.fireChannelRead(msgs.getUnsafe(i));
+
         }
     }
 
@@ -417,11 +448,18 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
      */
     protected void callDecode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) {
         try {
+
+            //todo 循环
             while (in.isReadable()) {
+
                 int outSize = out.size();
 
                 if (outSize > 0) {
+                    //todo 有数据,进行传播
+
                     fireChannelRead(ctx, out, outSize);
+
+                    //todo 传播完,清空
                     out.clear();
 
                     // Check if this handler was removed before continuing with decoding.
@@ -435,7 +473,11 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
                     outSize = 0;
                 }
 
+
+                //todo 获取输入的数据长度
                 int oldInputLength = in.readableBytes();
+
+                //todo 调用 decode 方法
                 decodeRemovalReentryProtection(ctx, in, out);
 
                 // Check if this handler was removed before continuing the loop.
@@ -446,20 +488,27 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
                     break;
                 }
 
+                //todo 没有做任何操作 || 当前的数据并不满足出发处理的操作.
                 if (outSize == out.size()) {
+
                     if (oldInputLength == in.readableBytes()) {
+                        //todo 没有足够的数据包进行操作
                         break;
                     } else {
+                        //todo 读取了部分的数据, 还没解析到对象
                         continue;
                     }
                 }
 
                 if (oldInputLength == in.readableBytes()) {
+                    //todo 抛出异常 decode没有读取任何数据, 但是decoded了信息
                     throw new DecoderException(
                             StringUtil.simpleClassName(getClass()) +
                                     ".decode() did not read anything but decoded a message.");
                 }
 
+
+                //todo singleDecode
                 if (isSingleDecode()) {
                     break;
                 }

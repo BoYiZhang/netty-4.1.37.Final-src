@@ -29,12 +29,14 @@ public interface EventExecutorChooserFactory {
     EventExecutorChooser newChooser(EventExecutor[] executors);
 
     /**
+     * todo EventExecutor 选择器接口
      * Chooses the next {@link EventExecutor} to use.
      */
     @UnstableApi
     interface EventExecutorChooser {
 
         /**
+         * todo 选择下一个 EventExecutor 对象
          * Returns the new {@link EventExecutor} to use.
          */
         EventExecutor next();

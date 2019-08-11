@@ -51,13 +51,22 @@ public class Bootstrap extends AbstractBootstrap<Bootstrap, Channel> {
 
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(Bootstrap.class);
 
+
+    //todo 默认地址解析器对象
     private static final AddressResolverGroup<?> DEFAULT_RESOLVER = DefaultAddressResolverGroup.INSTANCE;
 
+
+    //todo 启动类配置对象
     private final BootstrapConfig config = new BootstrapConfig(this);
 
+
+    //todo 地址解析器对象
     @SuppressWarnings("unchecked")
     private volatile AddressResolverGroup<SocketAddress> resolver =
             (AddressResolverGroup<SocketAddress>) DEFAULT_RESOLVER;
+
+
+    //todo 连接地址
     private volatile SocketAddress remoteAddress;
 
     public Bootstrap() { }
@@ -75,6 +84,9 @@ public class Bootstrap extends AbstractBootstrap<Bootstrap, Channel> {
      *                 resolver will be used
      *
      * @see io.netty.resolver.DefaultAddressResolverGroup
+     *
+     * todo 设置 resolver 属性。
+     *
      */
     @SuppressWarnings("unchecked")
     public Bootstrap resolver(AddressResolverGroup<?> resolver) {
@@ -139,7 +151,11 @@ public class Bootstrap extends AbstractBootstrap<Bootstrap, Channel> {
      */
     public ChannelFuture connect(SocketAddress remoteAddress) {
         ObjectUtil.checkNotNull(remoteAddress, "remoteAddress");
+
+        // todo 校验必要参数
         validate();
+
+        // todo 解析远程地址，并进行连接
         return doResolveAndConnect(remoteAddress, config.localAddress());
     }
 
@@ -156,13 +172,18 @@ public class Bootstrap extends AbstractBootstrap<Bootstrap, Channel> {
      * @see #connect()
      */
     private ChannelFuture doResolveAndConnect(final SocketAddress remoteAddress, final SocketAddress localAddress) {
+
+        // todo 初始化并注册一个 Channel 对象，因为注册是异步的过程，所以返回一个 ChannelFuture 对象。
         final ChannelFuture regFuture = initAndRegister();
         final Channel channel = regFuture.channel();
 
         if (regFuture.isDone()) {
+            //todo  若执行失败，直接进行返回。
             if (!regFuture.isSuccess()) {
                 return regFuture;
             }
+
+            //todo 解析远程地址，并进行连接
             return doResolveAndConnect0(channel, remoteAddress, localAddress, channel.newPromise());
         } else {
             // Registration future is almost always fulfilled already, but just in case it's not.
@@ -181,7 +202,14 @@ public class Bootstrap extends AbstractBootstrap<Bootstrap, Channel> {
                         // Registration was successful, so set the correct executor to use.
                         // See https://github.com/netty/netty/issues/2586
                         promise.registered();
+
+
+                        //todo 解析远程地址，并进行连接
                         doResolveAndConnect0(channel, remoteAddress, localAddress, promise);
+
+
+
+
                     }
                 }
             });
@@ -192,7 +220,11 @@ public class Bootstrap extends AbstractBootstrap<Bootstrap, Channel> {
     private ChannelFuture doResolveAndConnect0(final Channel channel, SocketAddress remoteAddress,
                                                final SocketAddress localAddress, final ChannelPromise promise) {
         try {
+
+
             final EventLoop eventLoop = channel.eventLoop();
+
+
             final AddressResolver<SocketAddress> resolver = this.resolver.getResolver(eventLoop);
 
             if (!resolver.isSupported(remoteAddress) || resolver.isResolved(remoteAddress)) {
@@ -201,9 +233,11 @@ public class Bootstrap extends AbstractBootstrap<Bootstrap, Channel> {
                 return promise;
             }
 
+            //todo 解析远程地址
             final Future<SocketAddress> resolveFuture = resolver.resolve(remoteAddress);
 
             if (resolveFuture.isDone()) {
+                //todo  解析远程地址失败，关闭 Channel ，并回调通知 promise 异常
                 final Throwable resolveFailureCause = resolveFuture.cause();
 
                 if (resolveFailureCause != null) {
@@ -211,6 +245,8 @@ public class Bootstrap extends AbstractBootstrap<Bootstrap, Channel> {
                     channel.close();
                     promise.setFailure(resolveFailureCause);
                 } else {
+
+                    // todo 连接远程地址
                     // Succeeded to resolve immediately; cached? (or did a blocking lookup)
                     doConnect(resolveFuture.getNow(), localAddress, promise);
                 }
@@ -221,15 +257,21 @@ public class Bootstrap extends AbstractBootstrap<Bootstrap, Channel> {
             resolveFuture.addListener(new FutureListener<SocketAddress>() {
                 @Override
                 public void operationComplete(Future<SocketAddress> future) throws Exception {
+
+
                     if (future.cause() != null) {
+                        //todo 解析远程地址失败，关闭 Channel ，并回调通知 promise 异常
                         channel.close();
+
                         promise.setFailure(future.cause());
                     } else {
+                        //todo  解析远程地址成功，连接远程地址
                         doConnect(future.getNow(), localAddress, promise);
                     }
                 }
             });
         } catch (Throwable cause) {
+            //todo 发生异常，并回调通知 promise 异常
             promise.tryFailure(cause);
         }
         return promise;
@@ -241,6 +283,7 @@ public class Bootstrap extends AbstractBootstrap<Bootstrap, Channel> {
         // This method is invoked before channelRegistered() is triggered.  Give user handlers a chance to set up
         // the pipeline in its channelRegistered() implementation.
         final Channel channel = connectPromise.channel();
+
         channel.eventLoop().execute(new Runnable() {
             @Override
             public void run() {
@@ -258,13 +301,19 @@ public class Bootstrap extends AbstractBootstrap<Bootstrap, Channel> {
     @SuppressWarnings("unchecked")
     void init(Channel channel) throws Exception {
         ChannelPipeline p = channel.pipeline();
+
+        //todo  添加处理器到 pipeline 中
         p.addLast(config.handler());
 
+
+        //todo 初始化 Channel 的可选项集合
         final Map<ChannelOption<?>, Object> options = options0();
         synchronized (options) {
             setChannelOptions(channel, options, logger);
         }
 
+
+        //todo 初始化 Channel 的属性集合
         final Map<AttributeKey<?>, Object> attrs = attrs0();
         synchronized (attrs) {
             for (Entry<AttributeKey<?>, Object> e: attrs.entrySet()) {

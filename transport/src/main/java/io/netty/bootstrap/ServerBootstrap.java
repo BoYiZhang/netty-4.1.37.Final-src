@@ -45,11 +45,26 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
 
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(ServerBootstrap.class);
 
+
+    //todo 子 Channel 的可选项集合
     private final Map<ChannelOption<?>, Object> childOptions = new LinkedHashMap<ChannelOption<?>, Object>();
+
+    //todo 子 Channel 的属性集合
     private final Map<AttributeKey<?>, Object> childAttrs = new LinkedHashMap<AttributeKey<?>, Object>();
+
+    //todo 启动类配置对象
     private final ServerBootstrapConfig config = new ServerBootstrapConfig(this);
+
+
+    //todo 子 Channel 的 EventLoopGroup 对象
     private volatile EventLoopGroup childGroup;
+
+
+
+    //todo 子 Channel 的处理器
     private volatile ChannelHandler childHandler;
+
+
 
     public ServerBootstrap() { }
 
@@ -65,9 +80,12 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
         }
     }
 
+
     /**
      * Specify the {@link EventLoopGroup} which is used for the parent (acceptor) and the child (client).
      */
+    //todo   当只传入一个 EventLoopGroup 对象时，即调用的是 #group(EventLoopGroup group) 时，
+    //       group 和 childGroup 使用同一个。一般情况下，我们不使用这个方法。
     @Override
     public ServerBootstrap group(EventLoopGroup group) {
         return group(group, group);
@@ -93,13 +111,16 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
      * (after the acceptor accepted the {@link Channel}). Use a value of {@code null} to remove a previous set
      * {@link ChannelOption}.
      */
+    //todo 设置子 Channel 的可选项
     public <T> ServerBootstrap childOption(ChannelOption<T> childOption, T value) {
         ObjectUtil.checkNotNull(childOption, "childOption");
         if (value == null) {
+            //todo 空，意味着移除
             synchronized (childOptions) {
                 childOptions.remove(childOption);
             }
         } else {
+            //todo 非空，进行修改
             synchronized (childOptions) {
                 childOptions.put(childOption, value);
             }
@@ -111,6 +132,8 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
      * Set the specific {@link AttributeKey} with the given value on every child {@link Channel}. If the value is
      * {@code null} the {@link AttributeKey} is removed
      */
+
+    //todo 设置子 Channel 的属性。
     public <T> ServerBootstrap childAttr(AttributeKey<T> childKey, T value) {
         ObjectUtil.checkNotNull(childKey, "childKey");
         if (value == null) {
@@ -124,6 +147,7 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
     /**
      * Set the {@link ChannelHandler} which is used to serve the request for the {@link Channel}'s.
      */
+    //todo 设置子 Channel 的处理器。
     public ServerBootstrap childHandler(ChannelHandler childHandler) {
         this.childHandler = ObjectUtil.checkNotNull(childHandler, "childHandler");
         return this;
@@ -131,11 +155,14 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
 
     @Override
     void init(Channel channel) throws Exception {
+        //todo 初始化 Channel 的可选项集合
         final Map<ChannelOption<?>, Object> options = options0();
         synchronized (options) {
             setChannelOptions(channel, options, logger);
         }
 
+
+        // todo 初始化 Channel 的属性集合
         final Map<AttributeKey<?>, Object> attrs = attrs0();
         synchronized (attrs) {
             for (Entry<AttributeKey<?>, Object> e: attrs.entrySet()) {
@@ -147,10 +174,13 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
 
         ChannelPipeline p = channel.pipeline();
 
+        //todo 记录当前的属性
         final EventLoopGroup currentChildGroup = childGroup;
         final ChannelHandler currentChildHandler = childHandler;
         final Entry<ChannelOption<?>, Object>[] currentChildOptions;
         final Entry<AttributeKey<?>, Object>[] currentChildAttrs;
+
+
         synchronized (childOptions) {
             currentChildOptions = childOptions.entrySet().toArray(newOptionArray(0));
         }
@@ -158,18 +188,37 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
             currentChildAttrs = childAttrs.entrySet().toArray(newAttrArray(0));
         }
 
+        //todo 添加 ChannelInitializer 对象到 pipeline 中，
+        // 用于后续初始化 ChannelHandler 到 pipeline 中。
         p.addLast(new ChannelInitializer<Channel>() {
             @Override
             public void initChannel(final Channel ch) throws Exception {
                 final ChannelPipeline pipeline = ch.pipeline();
+
+                //todo 添加配置的 ChannelHandler 到 pipeline 中。
                 ChannelHandler handler = config.handler();
                 if (handler != null) {
                     pipeline.addLast(handler);
                 }
 
+                // todo 添加 ServerBootstrapAcceptor 到 pipeline 中。
+                //  使用 EventLoop 执行的原因，参见
+                //  https://github.com/lightningMan/netty/commit/4638df20628a8987c8709f0f8e5f3679a914ce1a
+
+                // todo 创建 ServerBootstrapAcceptor 对象，添加到 pipeline 中。
+                //  为什么使用 EventLoop 执行添加的过程？
+                //  如果启动器配置的处理器，并且 ServerBootstrapAcceptor 不使用 EventLoop 添加，
+                //  则会导致 ServerBootstrapAcceptor 添加到配置的处理器之前。
+
+
+                //todo 因为此时 Channel 并未注册到 EventLoop 中。
+                // 如果调用 EventLoop#execute(Runnable runnable) 方法，
+                // 会抛出 Exception in thread "main" java.lang.IllegalStateException:
+                //                    channel not registered to an event loop 异常。
                 ch.eventLoop().execute(new Runnable() {
                     @Override
                     public void run() {
+                        //todo 默认添加 ServerBootstrapAcceptor
                         pipeline.addLast(new ServerBootstrapAcceptor(
                                 ch, currentChildGroup, currentChildHandler, currentChildOptions, currentChildAttrs));
                     }
@@ -178,6 +227,7 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
         });
     }
 
+    //todo 校验配置是否正确。
     @Override
     public ServerBootstrap validate() {
         super.validate();
@@ -201,6 +251,8 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
         return new Map.Entry[size];
     }
 
+
+    //todo ServerBootstrapAcceptor 也是一个 ChannelHandler 实现类，用于接受客户端的连接请求。
     private static class ServerBootstrapAcceptor extends ChannelInboundHandlerAdapter {
 
         private final EventLoopGroup childGroup;
@@ -235,8 +287,10 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
         public void channelRead(ChannelHandlerContext ctx, Object msg) {
             final Channel child = (Channel) msg;
 
+            //todo 添加 childHandler
             child.pipeline().addLast(childHandler);
 
+            //todo 设置 options 和 attrs
             setChannelOptions(child, childOptions, logger);
 
             for (Entry<AttributeKey<?>, Object> e: childAttrs) {
@@ -244,6 +298,9 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
             }
 
             try {
+
+                //todo workgroup 选择 NioEventLoop 并注册 selector
+
                 childGroup.register(child).addListener(new ChannelFutureListener() {
                     @Override
                     public void operationComplete(ChannelFuture future) throws Exception {
@@ -277,6 +334,7 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
         }
     }
 
+    //todo 调用参数为 bootstrap 为 ServerBootstrap 构造方法，克隆一个 ServerBootstrap 对象。
     @Override
     @SuppressWarnings("CloneDoesntCallSuperClone")
     public ServerBootstrap clone() {

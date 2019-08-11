@@ -82,6 +82,7 @@ public abstract class MultithreadEventLoopGroup extends MultithreadEventExecutor
     @Override
     protected abstract EventLoop newChild(Executor executor, Object... args) throws Exception;
 
+    //todo 注册操作
     @Override
     public ChannelFuture register(Channel channel) {
         return next().register(channel);

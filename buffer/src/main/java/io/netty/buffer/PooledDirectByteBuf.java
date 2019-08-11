@@ -25,15 +25,20 @@ import java.nio.ByteBuffer;
 
 final class PooledDirectByteBuf extends PooledByteBuf<ByteBuffer> {
 
+    //todo Recycler 对象
     private static final Recycler<PooledDirectByteBuf> RECYCLER = new Recycler<PooledDirectByteBuf>() {
         @Override
         protected PooledDirectByteBuf newObject(Handle<PooledDirectByteBuf> handle) {
+            //todo 真正创建 PooledDirectByteBuf 对象
             return new PooledDirectByteBuf(handle, 0);
         }
     };
 
     static PooledDirectByteBuf newInstance(int maxCapacity) {
+        //todo 从 Recycler 的对象池中获得 PooledDirectByteBuf 对象
         PooledDirectByteBuf buf = RECYCLER.get();
+
+        //todo 重置 PooledDirectByteBuf 的属性
         buf.reuse(maxCapacity);
         return buf;
     }
@@ -279,6 +284,8 @@ final class PooledDirectByteBuf extends PooledByteBuf<ByteBuffer> {
     @Override
     public ByteBuf copy(int index, int length) {
         checkIndex(index, length);
+
+        //todo 创建一个 Direct ByteBuf 对象
         ByteBuf copy = alloc().directBuffer(length, maxCapacity());
         return copy.writeBytes(this, index, length);
     }

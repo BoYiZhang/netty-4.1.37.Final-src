@@ -60,10 +60,20 @@ import java.util.List;
 public class DelimiterBasedFrameDecoder extends ByteToMessageDecoder {
 
     private final ByteBuf[] delimiters;
+
+
     private final int maxFrameLength;
+
+
     private final boolean stripDelimiter;
+
+
     private final boolean failFast;
+
+
     private boolean discardingTooLongFrame;
+
+
     private int tooLongFrameLength;
     /** Set only when decoding with "\n" and "\r\n" as the delimiter.  */
     private final LineBasedFrameDecoder lineBasedDecoder;
@@ -230,12 +240,16 @@ public class DelimiterBasedFrameDecoder extends ByteToMessageDecoder {
      *                          be created.
      */
     protected Object decode(ChannelHandlerContext ctx, ByteBuf buffer) throws Exception {
+        //todo 行处理器处理
         if (lineBasedDecoder != null) {
             return lineBasedDecoder.decode(ctx, buffer);
         }
+
+        //todo 寻找最近的分隔符下标
         // Try all delimiters and choose the delimiter which yields the shortest frame.
         int minFrameLength = Integer.MAX_VALUE;
         ByteBuf minDelim = null;
+
         for (ByteBuf delim: delimiters) {
             int frameLength = indexOf(buffer, delim);
             if (frameLength >= 0 && frameLength < minFrameLength) {
@@ -244,10 +258,14 @@ public class DelimiterBasedFrameDecoder extends ByteToMessageDecoder {
             }
         }
 
+        //todo 最小分隔符下标不为 null
         if (minDelim != null) {
+
+            //todo 获取分隔符长度
             int minDelimLength = minDelim.capacity();
             ByteBuf frame;
 
+            //todo 过滤
             if (discardingTooLongFrame) {
                 // We've just finished discarding a very large frame.
                 // Go back to the initial state.
@@ -263,12 +281,14 @@ public class DelimiterBasedFrameDecoder extends ByteToMessageDecoder {
             }
 
             if (minFrameLength > maxFrameLength) {
+                //todo 超过处理的长度限制, 丢弃.....
                 // Discard read frame.
                 buffer.skipBytes(minFrameLength + minDelimLength);
                 fail(minFrameLength);
                 return null;
             }
 
+            //todo 返回值是否包含分隔字符,  stripDelimiter true: 否.   false : 是
             if (stripDelimiter) {
                 frame = buffer.readRetainedSlice(minFrameLength);
                 buffer.skipBytes(minDelimLength);
@@ -276,9 +296,14 @@ public class DelimiterBasedFrameDecoder extends ByteToMessageDecoder {
                 frame = buffer.readRetainedSlice(minFrameLength + minDelimLength);
             }
 
+            //todo 返回值
             return frame;
         } else {
+
+            //todo 没有找到要分隔的数据
+
             if (!discardingTooLongFrame) {
+                //todo 超过处理的长度限制, 丢弃
                 if (buffer.readableBytes() > maxFrameLength) {
                     // Discard the content of the buffer until a delimiter is found.
                     tooLongFrameLength = buffer.readableBytes();
@@ -289,8 +314,10 @@ public class DelimiterBasedFrameDecoder extends ByteToMessageDecoder {
                     }
                 }
             } else {
+                //todo 更新 tooLongFrameLength的限制
                 // Still discarding the buffer since a delimiter is not found.
                 tooLongFrameLength += buffer.readableBytes();
+                //todo 跳过已经读取的数据
                 buffer.skipBytes(buffer.readableBytes());
             }
             return null;

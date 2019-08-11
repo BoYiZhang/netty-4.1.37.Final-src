@@ -67,8 +67,12 @@ public abstract class AbstractByteBuf extends ByteBuf {
     static final ResourceLeakDetector<ByteBuf> leakDetector =
             ResourceLeakDetectorFactory.instance().newResourceLeakDetector(ByteBuf.class);
 
+    //todo 读取位置
     int readerIndex;
+    //todo 写入位置
     int writerIndex;
+
+
     private int markedReaderIndex;
     private int markedWriterIndex;
     private int maxCapacity;
@@ -86,9 +90,13 @@ public abstract class AbstractByteBuf extends ByteBuf {
     @SuppressWarnings("deprecation")
     @Override
     public ByteBuf asReadOnly() {
+
+        // todo 如果是只读，直接返回
         if (isReadOnly()) {
             return this;
         }
+
+        //todo 转化成只读 Buffer 对象
         return Unpooled.unmodifiableBuffer(this);
     }
 
@@ -213,18 +221,31 @@ public abstract class AbstractByteBuf extends ByteBuf {
 
     @Override
     public ByteBuf discardReadBytes() {
+        //todo 校验可访问
         ensureAccessible();
+
+        //todo 无废弃段，直接返回
         if (readerIndex == 0) {
             return this;
         }
-
+        //todo 未读取完
         if (readerIndex != writerIndex) {
+            //todo 将可读段复制到 ByteBuf 头
             setBytes(0, this, readerIndex, writerIndex - readerIndex);
+            //todo 写索引减小
             writerIndex -= readerIndex;
+            //todo 调整标记位
             adjustMarkers(readerIndex);
+            //todo 读索引重置为 0
             readerIndex = 0;
+
+
         } else {
+            //todo 全部读取完
+
+            //todo 调整标记位
             adjustMarkers(readerIndex);
+            //todo 读写索引都重置为 0
             writerIndex = readerIndex = 0;
         }
         return this;
@@ -232,21 +253,32 @@ public abstract class AbstractByteBuf extends ByteBuf {
 
     @Override
     public ByteBuf discardSomeReadBytes() {
+        //todo 校验可访问
         ensureAccessible();
+
+        //todo 无废弃段，直接返回
         if (readerIndex == 0) {
             return this;
         }
 
+        //todo 全部读取完
         if (readerIndex == writerIndex) {
+            //todo 调整标记位
             adjustMarkers(readerIndex);
+            //todo 读写索引都重置为 0
             writerIndex = readerIndex = 0;
             return this;
         }
 
+        //todo 读取超过容量的一半，进行释放
         if (readerIndex >= capacity() >>> 1) {
+            //todo 将可读段复制到 ByteBuf 头
             setBytes(0, this, readerIndex, writerIndex - readerIndex);
+            //todo 写索引减小
             writerIndex -= readerIndex;
+            //todo 调整标记位
             adjustMarkers(readerIndex);
+            //todo 读索引重置为 0
             readerIndex = 0;
         }
         return this;
@@ -276,12 +308,16 @@ public abstract class AbstractByteBuf extends ByteBuf {
     }
 
     final void ensureWritable0(int minWritableBytes) {
+        //todo 检查是否可访问
         ensureAccessible();
+
+        //todo 目前容量可写，直接返回
         if (minWritableBytes <= writableBytes()) {
             return;
         }
         final int writerIndex = writerIndex();
         if (checkBounds) {
+            // todo 超过最大上限，抛出 IndexOutOfBoundsException 异常
             if (minWritableBytes > maxCapacity - writerIndex) {
                 throw new IndexOutOfBoundsException(String.format(
                         "writerIndex(%d) + minWritableBytes(%d) exceeds maxCapacity(%d): %s",
@@ -289,6 +325,8 @@ public abstract class AbstractByteBuf extends ByteBuf {
             }
         }
 
+
+        //todo   计算新的容量。默认情况下，2 倍扩容，并且不超过最大容量上限。
         // Normalize the current capacity to the power of 2.
         int minNewCapacity = writerIndex + minWritableBytes;
         int newCapacity = alloc().calculateNewCapacity(minNewCapacity, maxCapacity);
@@ -299,30 +337,40 @@ public abstract class AbstractByteBuf extends ByteBuf {
             newCapacity = fastCapacity;
         }
 
+        // todo 设置新的容量大小
         // Adjust to the new capacity.
         capacity(newCapacity);
     }
 
     @Override
     public int ensureWritable(int minWritableBytes, boolean force) {
+        //todo 检查是否可访问
         ensureAccessible();
         checkPositiveOrZero(minWritableBytes, "minWritableBytes");
 
+
+        // todo 目前容量可写，直接返回 0
         if (minWritableBytes <= writableBytes()) {
             return 0;
         }
 
         final int maxCapacity = maxCapacity();
         final int writerIndex = writerIndex();
+
+        //todo 超过最大上限
         if (minWritableBytes > maxCapacity - writerIndex) {
+            //todo 不强制设置，或者已经到达最大容量
             if (!force || capacity() == maxCapacity) {
+                //todo 返回 1
                 return 1;
             }
 
+            //todo 设置为最大容量
             capacity(maxCapacity);
             return 3;
         }
 
+        // todo 计算新的容量。默认情况下，2 倍扩容，并且不超过最大容量上限。
         // Normalize the current capacity to the power of 2.
         int minNewCapacity = writerIndex + minWritableBytes;
         int newCapacity = alloc().calculateNewCapacity(minNewCapacity, maxCapacity);
@@ -333,6 +381,7 @@ public abstract class AbstractByteBuf extends ByteBuf {
             newCapacity = fastCapacity;
         }
 
+        // todo 设置新的容量大小
         // Adjust to the new capacity.
         capacity(newCapacity);
         return 2;
@@ -340,12 +389,16 @@ public abstract class AbstractByteBuf extends ByteBuf {
 
     @Override
     public ByteBuf order(ByteOrder endianness) {
+
+        //todo 未改变，直接返回
         if (endianness == order()) {
             return this;
         }
         if (endianness == null) {
             throw new NullPointerException("endianness");
         }
+
+        // todo 创建 SwappedByteBuf 对象
         return newSwappedByteBuf();
     }
 
@@ -436,9 +489,12 @@ public abstract class AbstractByteBuf extends ByteBuf {
 
     @Override
     public int getInt(int index) {
+        // 校验读取是否会超过容量
         checkIndex(index, 4);
+        // 读取 Int 数据
         return _getInt(index);
     }
+
 
     protected abstract int _getInt(int index);
 
@@ -1210,6 +1266,8 @@ public abstract class AbstractByteBuf extends ByteBuf {
 
     @Override
     public ByteBuf retainedDuplicate() {
+
+        //todo 调用 #duplicate() 方法，拷贝整个的字节数组。
         return duplicate().retain();
     }
 

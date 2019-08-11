@@ -47,9 +47,15 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 
     static final InternalLogger logger = InternalLoggerFactory.getInstance(DefaultChannelPipeline.class);
 
+
+    //todo HEAD名字
     private static final String HEAD_NAME = generateName0(HeadContext.class);
+
+    //todo TAIL名字
     private static final String TAIL_NAME = generateName0(TailContext.class);
 
+    //todo 名字({@link AbstractChannelHandlerContext#name})缓存 ，
+    //     基于 ThreadLocal ，用于生成在线程中唯一的名字。
     private static final FastThreadLocal<Map<Class<?>, String>> nameCaches =
             new FastThreadLocal<Map<Class<?>, String>>() {
         @Override
@@ -58,19 +64,38 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         }
     };
 
+    //todo {@link #estimatorHandle} 的原子更新器
     private static final AtomicReferenceFieldUpdater<DefaultChannelPipeline, MessageSizeEstimator.Handle> ESTIMATOR =
             AtomicReferenceFieldUpdater.newUpdater(
                     DefaultChannelPipeline.class, MessageSizeEstimator.Handle.class, "estimatorHandle");
+
+
+    //todo Head 节点
     final AbstractChannelHandlerContext head;
+
+    //todo Tail 节点
     final AbstractChannelHandlerContext tail;
 
+    //todo 所属 Channel 对象
     private final Channel channel;
+
+    //todo 成功的 Promise 对象
     private final ChannelFuture succeededFuture;
+
+    //todo 不进行通知的 Promise 对象
+    //todo 用于一些方法执行，需要传入 Promise 类型的方法参数，但是不需要进行通知，就传入该值
     private final VoidChannelPromise voidPromise;
+
+    //todo DefaultChannelPipeline 字段用途
     private final boolean touch = ResourceLeakDetector.isEnabled();
 
+    //todo 子执行器集合。
     private Map<EventExecutorGroup, EventExecutor> childExecutors;
+
+
     private volatile MessageSizeEstimator.Handle estimatorHandle;
+
+    //todo 是否首次注册
     private boolean firstRegistration = true;
 
     /**
@@ -80,23 +105,38 @@ public class DefaultChannelPipeline implements ChannelPipeline {
      * We only keep the head because it is expected that the list is used infrequently and its size is small.
      * Thus full iterations to do insertions is assumed to be a good compromised to saving memory and tail management
      * complexity.
+     *
+     * todo 准备添加 ChannelHandler 的回调
      */
     private PendingHandlerCallback pendingHandlerCallbackHead;
 
     /**
      * Set to {@code true} once the {@link AbstractChannel} is registered.Once set to {@code true} the value will never
      * change.
+     *
+     * todo Channel 是否已注册
      */
     private boolean registered;
 
     protected DefaultChannelPipeline(Channel channel) {
+
         this.channel = ObjectUtil.checkNotNull(channel, "channel");
+
+        //todo succeededFuture 的创建
         succeededFuture = new SucceededChannelFuture(channel, null);
+
+        //todo voidPromise 的创建
         voidPromise =  new VoidChannelPromise(channel, true);
 
+        //todo 创建哨兵节点  双向链表
+
+        //todo 创建 Tail   节点
         tail = new TailContext(this);
+
+        //todo 创建 Head 节点
         head = new HeadContext(this);
 
+        //todo 相互指向
         head.next = tail;
         tail.prev = head;
     }
@@ -116,6 +156,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         return touch ? ReferenceCountUtil.touch(msg, next) : msg;
     }
 
+    //todo 创建ChannelHandlerContext 节点
     private AbstractChannelHandlerContext newContext(EventExecutorGroup group, String name, ChannelHandler handler) {
         return new DefaultChannelHandlerContext(this, childExecutor(group), name, handler);
     }
@@ -198,11 +239,16 @@ public class DefaultChannelPipeline implements ChannelPipeline {
     @Override
     public final ChannelPipeline addLast(EventExecutorGroup group, String name, ChannelHandler handler) {
         final AbstractChannelHandlerContext newCtx;
+
+
         synchronized (this) {
+            //todo 判断是否重复添加
             checkMultiplicity(handler);
 
+            //todo 创建节点 名称不重复
             newCtx = newContext(group, filterName(name, handler), handler);
 
+            // todo 添加至链表  将newCtx 插入 tail 节点前面
             addLast0(newCtx);
 
             // If the registered is false it means that the channel was not registered on an eventLoop yet.
@@ -213,14 +259,18 @@ public class DefaultChannelPipeline implements ChannelPipeline {
                 callHandlerCallbackLater(newCtx, true);
                 return this;
             }
-
+            //todo 不在当前线程, 直接扔到队列里面
             EventExecutor executor = newCtx.executor();
             if (!executor.inEventLoop()) {
                 callHandlerAddedInEventLoop(newCtx, executor);
                 return this;
             }
         }
+
+
         callHandlerAdded0(newCtx);
+
+
         return this;
     }
 
@@ -281,6 +331,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         if (name == null) {
             return generateName(handler);
         }
+        //todo 验证重复
         checkDuplicateName(name);
         return name;
     }
@@ -594,8 +645,10 @@ public class DefaultChannelPipeline implements ChannelPipeline {
     }
 
     private static void checkMultiplicity(ChannelHandler handler) {
+        //todo ChannelHandlerAdapter实例 ?
         if (handler instanceof ChannelHandlerAdapter) {
             ChannelHandlerAdapter h = (ChannelHandlerAdapter) handler;
+            //todo 验证是否是共享且非添加
             if (!h.isSharable() && h.added) {
                 throw new ChannelPipelineException(
                         h.getClass().getName() +
@@ -603,11 +656,16 @@ public class DefaultChannelPipeline implements ChannelPipeline {
             }
             h.added = true;
         }
+
     }
 
     private void callHandlerAdded0(final AbstractChannelHandlerContext ctx) {
         try {
+
+
             ctx.callHandlerAdded();
+
+
         } catch (Throwable t) {
             boolean removed = false;
             try {
@@ -903,6 +961,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 
     @Override
     public final ChannelPipeline fireChannelActive() {
+        //todo 从头部处理
         AbstractChannelHandlerContext.invokeChannelActive(head);
         return this;
     }
@@ -1012,6 +1071,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 
     @Override
     public final ChannelPipeline read() {
+        //todo ChannelPipeline 的tail 向前传播
         tail.read();
         return this;
     }
@@ -1062,11 +1122,13 @@ public class DefaultChannelPipeline implements ChannelPipeline {
     }
 
     private void checkDuplicateName(String name) {
+        //todo 验证名字
         if (context0(name) != null) {
             throw new IllegalArgumentException("Duplicate handler name: " + name);
         }
     }
 
+    //todo 重头到尾遍历
     private AbstractChannelHandlerContext context0(String name) {
         AbstractChannelHandlerContext context = head.next;
         while (context != tail) {
@@ -1160,10 +1222,10 @@ public class DefaultChannelPipeline implements ChannelPipeline {
      */
     protected void onUnhandledInboundException(Throwable cause) {
         try {
-            logger.warn(
+            System.out.println(
                     "An exceptionCaught() event was fired, and it reached at the tail of the pipeline. " +
-                            "It usually means the last handler in the pipeline did not handle the exception.",
-                    cause);
+                            "It usually means the last handler in the pipeline did not handle the exception."
+                    );
         } finally {
             ReferenceCountUtil.release(cause);
         }
@@ -1190,7 +1252,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
      */
     protected void onUnhandledInboundMessage(Object msg) {
         try {
-            logger.debug(
+            logger.info(
                     "Discarded inbound message {} that reached at the tail of the pipeline. " +
                             "Please check your pipeline configuration.", msg);
         } finally {
@@ -1291,6 +1353,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 
         @Override
         public void channelRead(ChannelHandlerContext ctx, Object msg) {
+
             onUnhandledInboundMessage(msg);
         }
 
@@ -1357,6 +1420,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 
         @Override
         public void read(ChannelHandlerContext ctx) {
+            //todo  开始读取  SocketChannelUnsafe#beginRead
             unsafe.beginRead();
         }
 
@@ -1391,9 +1455,12 @@ public class DefaultChannelPipeline implements ChannelPipeline {
             }
         }
 
+
+        //todo channelActive
         @Override
         public void channelActive(ChannelHandlerContext ctx) {
             ctx.fireChannelActive();
+
 
             readIfIsAutoRead();
         }
@@ -1416,7 +1483,9 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         }
 
         private void readIfIsAutoRead() {
+            //todo 自动读取  向 selector 注册一个读事件
             if (channel.config().isAutoRead()) {
+
                 channel.read();
             }
         }

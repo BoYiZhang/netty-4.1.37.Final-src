@@ -20,18 +20,24 @@ import io.netty.channel.Channel;
 
 /**
  * An {@link Enum} that represents the idle state of a {@link Channel}.
+ *
+ * todo 共有 3 种状态。其中，ALL_IDLE 表示的是，读或写任一空闲，注意是“或”。
+ *
  */
 public enum IdleState {
     /**
      * No data was received for a while.
+     * 读空闲
      */
     READER_IDLE,
     /**
      * No data was sent for a while.
+     * 写空闲
      */
     WRITER_IDLE,
     /**
      * No data was either received or sent for a while.
+     * 读或写任一空闲
      */
     ALL_IDLE
 }

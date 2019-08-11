@@ -23,9 +23,14 @@ import java.util.NoSuchElementException;
 
 final class SelectedSelectionKeySet extends AbstractSet<SelectionKey> {
 
+    //todo SelectionKey 数组
     SelectionKey[] keys;
+
+    //todo 数组可读大小
     int size;
 
+
+    //todo 默认 1024 大小
     SelectedSelectionKeySet() {
         keys = new SelectionKey[1024];
     }
@@ -36,8 +41,12 @@ final class SelectedSelectionKeySet extends AbstractSet<SelectionKey> {
             return false;
         }
 
+        //todo 添加到数组
         keys[size++] = o;
+
+        //todo 超过数组大小上限，进行扩容
         if (size == keys.length) {
+            //todo 扩容 2 倍
             increaseCapacity();
         }
 
@@ -89,13 +98,19 @@ final class SelectedSelectionKeySet extends AbstractSet<SelectionKey> {
     }
 
     void reset(int start) {
+        //todo 重置数组内容为空
         Arrays.fill(keys, start, size, null);
+        //todo 重置可读大小为 0
         size = 0;
     }
 
+    //todo 2 倍扩容
     private void increaseCapacity() {
+        //todo 两倍扩容
         SelectionKey[] newKeys = new SelectionKey[keys.length << 1];
+        //todo 复制老数组到新数组
         System.arraycopy(keys, 0, newKeys, 0, size);
+        //todo 赋值给老数组
         keys = newKeys;
     }
 }

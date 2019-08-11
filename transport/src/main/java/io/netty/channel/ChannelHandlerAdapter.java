@@ -26,6 +26,8 @@ import java.util.Map;
  */
 public abstract class ChannelHandlerAdapter implements ChannelHandler {
 
+
+    //todo 是否已经初始化
     // Not using volatile because it's used only for a sanity check.
     boolean added;
 
@@ -55,6 +57,7 @@ public abstract class ChannelHandlerAdapter implements ChannelHandler {
         Map<Class<?>, Boolean> cache = InternalThreadLocalMap.get().handlerSharableCache();
         Boolean sharable = cache.get(clazz);
         if (sharable == null) {
+            //todo 验证是否有 Sharable 注解 . 有Sharable注解就可以多次添加
             sharable = clazz.isAnnotationPresent(Sharable.class);
             cache.put(clazz, sharable);
         }

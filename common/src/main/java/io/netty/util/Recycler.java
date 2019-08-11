@@ -49,11 +49,16 @@ public abstract class Recycler<T> {
     };
     private static final AtomicInteger ID_GENERATOR = new AtomicInteger(Integer.MIN_VALUE);
     private static final int OWN_THREAD_ID = ID_GENERATOR.getAndIncrement();
+
     private static final int DEFAULT_INITIAL_MAX_CAPACITY_PER_THREAD = 4 * 1024; // Use 4k instances as default.
+
     private static final int DEFAULT_MAX_CAPACITY_PER_THREAD;
+
     private static final int INITIAL_CAPACITY;
+
     private static final int MAX_SHARED_CAPACITY_FACTOR;
     private static final int MAX_DELAYED_QUEUES_PER_THREAD;
+
     private static final int LINK_CAPACITY;
     private static final int RATIO;
 
@@ -108,6 +113,8 @@ public abstract class Recycler<T> {
     private final int ratioMask;
     private final int maxDelayedQueuesPerThread;
 
+
+    //todo // 存储对象的数据结构。对象池的真正的 “池”
     private final FastThreadLocal<Stack<T>> threadLocal = new FastThreadLocal<Stack<T>>() {
         @Override
         protected Stack<T> initialValue() {
@@ -152,6 +159,7 @@ public abstract class Recycler<T> {
         }
     }
 
+    //todo 从 threadLocal 中取出 Stack 中首个 T 实例。
     @SuppressWarnings("unchecked")
     public final T get() {
         if (maxCapacityPerThread == 0) {
@@ -192,6 +200,8 @@ public abstract class Recycler<T> {
         return threadLocal.get().size;
     }
 
+
+    //todo 当 Stack 中没有实例的时候，创建一个实例返回。
     protected abstract T newObject(Handle<T> handle);
 
     public interface Handle<T> {
@@ -211,6 +221,7 @@ public abstract class Recycler<T> {
             this.stack = stack;
         }
 
+        //todo 压入对象池
         @Override
         public void recycle(Object object) {
             if (object != value) {
@@ -226,6 +237,7 @@ public abstract class Recycler<T> {
         }
     }
 
+    //todo 多线程共享的队列
     private static final FastThreadLocal<Map<Stack<?>, WeakOrderQueue>> DELAYED_RECYCLED =
             new FastThreadLocal<Map<Stack<?>, WeakOrderQueue>>() {
         @Override
@@ -320,9 +332,20 @@ public abstract class Recycler<T> {
             // Its important that we not store the Stack itself in the WeakOrderQueue as the Stack also is used in
             // the WeakHashMap as key. So just store the enclosed AtomicInteger which should allow to have the
             // Stack itself GCed.
+
+            /**
+             * todo
+             *  每次创建WeakOrderQueue时会更新WeakOrderQueue所属的stack的head为当前WeakOrderQueue，
+             *  当前WeakOrderQueue的next为stack的之前head，
+             *  这样把该stack的WeakOrderQueue通过链表串起来了，
+             *  当下次stack中没有可用对象需要从WeakOrderQueue中转移对象时
+             *  从WeakOrderQueue链表的head进行scavenge转移到stack的对DefaultHandle数组。
+             */
             head = new Head(stack.availableSharedCapacity);
             head.link = tail;
             owner = new WeakReference<Thread>(thread);
+
+
         }
 
         static WeakOrderQueue newQueue(Stack<?> stack, Thread thread) {
@@ -444,11 +467,12 @@ public abstract class Recycler<T> {
         }
     }
 
+    //todo 存储对象的数据结构。对象池的真正的 “池”
     static final class Stack<T> {
 
         // we keep a queue of per-thread queues, which is appended to once only, each time a new thread other
         // than the stack owner recycles: when we run out of items in our stack we iterate this collection
-        // to scavenge those that can be reused. this permits us to incur minimal thread synchronisation whilst
+        // to scavenge those that can be reused. this p ermits us to incur minimal thread synchronisation whilst
         // still recycling all items.
         final Recycler<T> parent;
 
@@ -525,6 +549,7 @@ public abstract class Recycler<T> {
 
         boolean scavenge() {
             // continue an existing scavenge, if any
+            //todo 清理成功后，stack 的 size 会变化
             if (scavengeSome()) {
                 return true;
             }
@@ -550,15 +575,22 @@ public abstract class Recycler<T> {
 
             boolean success = false;
             do {
+
+                //todo 将 head queue 的实例转移到 this stack 中
                 if (cursor.transfer(this)) {
                     success = true;
                     break;
                 }
+
+                //todo 如果上面失败，找下一个节点
                 WeakOrderQueue next = cursor.next;
+
+                //todo 如果当前线程被回收了，
                 if (cursor.owner.get() == null) {
                     // If the thread associated with the queue is gone, unlink it, after
                     // performing a volatile read to confirm there is no data left to collect.
                     // We never unlink the first queue, as we don't want to synchronize on updating the head.
+                    //todo 只要最后一个节点还有数据，就一直转移
                     if (cursor.hasFinalData()) {
                         for (;;) {
                             if (cursor.transfer(this)) {
@@ -579,7 +611,7 @@ public abstract class Recycler<T> {
                 cursor = next;
 
             } while (cursor != null && !success);
-
+            //todo 转移成功之后，将 cursor 重置
             this.prev = prev;
             this.cursor = cursor;
             return success;
@@ -617,24 +649,47 @@ public abstract class Recycler<T> {
             this.size = size + 1;
         }
 
+
+
+        //todo
+        //    每个线程都有一个 Stack 对象，每个线程也都有一个软引用 Map，键为 Stack，值是 queue。
+        //    线程每次从 local 中获取 Stack 对象，再从 Stack 中取出实例。如果取不到，尝试从 queue 取，也就是从queue 中的 Link 中取出，并销毁 Link。
+        //    但回收的时候，可能就不是原来的那个线程了，由于回收时使用的还是原来的 Stack，所以，需要考虑这个实例如何才能正确的回收。
+        //    这个时候，就需要 Map 出场了。创建一个 queue 关联这个 Stack，将数据放到这个 queue 中。等到持有这个 Stack 的线程想拿数据了，就从 Stack 对应的 queue 中取出。
+        //    看出来了吗？只有一个线程持有唯一的 Stack，其余的线程只持有这个 Stack 关联的 queue。因此，可以说，这个 queue 是两个线程共享的。除了 Stack 自己的线程外，其余的线程的归还都是放到 自己的queue 中。
+        //    这个 queue 是无界的。内部的 Link 是有界的。每个线程对应一个 queue。
+        //    这些线程的 queue 组成了链表。
         private void pushLater(DefaultHandle<?> item, Thread thread) {
             // we don't want to have a ref to the queue as the value in our weak map
             // so we null it out; to ensure there are no races with restoring it later
             // we impose a memory ordering here (no-op on x86)
+
+
+            //todo 每个 Stack 对应一串 queue，找到当前线程的 map
             Map<Stack<?>, WeakOrderQueue> delayedRecycled = DELAYED_RECYCLED.get();
+
+            //todo 查看当前线程中是否含有这个 Stack 对应的队列
             WeakOrderQueue queue = delayedRecycled.get(this);
+
+            //todo 如果没有
             if (queue == null) {
+
+                //todo 如果 map 长度已经大于最大延迟数了，则向 map 中添加一个假的队列
                 if (delayedRecycled.size() >= maxDelayedQueues) {
                     // Add a dummy queue so we know we should drop the object
                     delayedRecycled.put(this, WeakOrderQueue.DUMMY);
                     return;
                 }
+
+                //todo 如果长度不大于最大延迟数，则尝试创建一个queue，链接到这个 Stack 的 head 节点前（内部创建Link）
                 // Check if we already reached the maximum number of delayed queues and if we can allocate at all.
                 if ((queue = WeakOrderQueue.allocate(this, thread)) == null) {
                     // drop object
                     return;
                 }
                 delayedRecycled.put(this, queue);
+
+
             } else if (queue == WeakOrderQueue.DUMMY) {
                 // drop object
                 return;

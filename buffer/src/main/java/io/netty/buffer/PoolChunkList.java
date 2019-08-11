@@ -18,10 +18,7 @@ package io.netty.buffer;
 
 import io.netty.util.internal.StringUtil;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Iterator;
-import java.util.List;
+import java.util.*;
 
 import static java.lang.Math.*;
 
@@ -56,6 +53,7 @@ final class PoolChunkList<T> implements PoolChunkListMetric {
      * that belong to the {@link PoolChunkList} with the given {@code minUsage} and {@code maxUsage} settings.
      */
     private static int calculateMaxCapacity(int minUsage, int chunkSize) {
+        //todo 计算 minUsage 值
         minUsage = minUsage0(minUsage);
 
         if (minUsage == 100) {
@@ -83,14 +81,24 @@ final class PoolChunkList<T> implements PoolChunkListMetric {
             return false;
         }
 
+        //todo 从链表循环进行分配资源
         for (PoolChunk<T> cur = head; cur != null; cur = cur.next) {
+
+
             if (cur.allocate(buf, reqCapacity, normCapacity)) {
+
+                //todo 如果使用率大于限定的值,加入到下一个链表
                 if (cur.usage() >= maxUsage) {
+
+
                     remove(cur);
+
                     nextList.add(cur);
                 }
                 return true;
             }
+
+
         }
         return false;
     }

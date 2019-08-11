@@ -21,6 +21,7 @@ package io.netty.buffer;
  */
 public interface ByteBufAllocator {
 
+    //todo 默认 ByteBufAllocator 对象，通过 ByteBufUtil.DEFAULT_ALLOCATOR 中获得。
     ByteBufAllocator DEFAULT = ByteBufUtil.DEFAULT_ALLOCATOR;
 
     /**

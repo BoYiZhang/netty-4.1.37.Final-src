@@ -294,6 +294,8 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
     }
 
     private void doBind0(SocketAddress localAddress) throws Exception {
+
+        //todo  服务端的 Java 原生 NIO ServerSocketChannel 终于绑定端口。😈
         if (PlatformDependent.javaVersion() >= 7) {
             SocketUtils.bind(javaChannel(), localAddress);
         } else {
@@ -303,19 +305,29 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
 
     @Override
     protected boolean doConnect(SocketAddress remoteAddress, SocketAddress localAddress) throws Exception {
+        // todo 绑定本地地址
         if (localAddress != null) {
             doBind0(localAddress);
         }
-
+        // todo 执行是否成功
         boolean success = false;
         try {
+
+            //todo 连接远程地址
             boolean connected = SocketUtils.connect(javaChannel(), remoteAddress);
+
+            //todo 若未连接完成，则关注连接( OP_CONNECT )事件。
             if (!connected) {
                 selectionKey().interestOps(SelectionKey.OP_CONNECT);
             }
+            //todo 标记执行是否成功
             success = true;
+
+            //todo 返回是否连接完成
             return connected;
         } finally {
+
+            //todo 执行失败，则关闭 Channel
             if (!success) {
                 doClose();
             }
@@ -324,6 +336,7 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
 
     @Override
     protected void doFinishConnect() throws Exception {
+        //todo  调用  SocketChannel#finishConnect()
         if (!javaChannel().finishConnect()) {
             throw new Error();
         }
@@ -342,8 +355,13 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
 
     @Override
     protected int doReadBytes(ByteBuf byteBuf) throws Exception {
+        //todo 获得 RecvByteBufAllocator.Handle 对象
         final RecvByteBufAllocator.Handle allocHandle = unsafe().recvBufAllocHandle();
+
+        //todo 设置最大可读取字节数量。因为 ByteBuf 目前最大写入的大小为 byteBuf.writableBytes()
         allocHandle.attemptedBytesRead(byteBuf.writableBytes());
+
+        //todo 读取数据到 ByteBuf 中
         return byteBuf.writeBytes(javaChannel(), allocHandle.attemptedBytesRead());
     }
 
@@ -375,20 +393,33 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
     @Override
     protected void doWrite(ChannelOutboundBuffer in) throws Exception {
         SocketChannel ch = javaChannel();
+
+        // TODO 获得自旋写入次数
         int writeSpinCount = config().getWriteSpinCount();
         do {
+
+            //TODO 内存队列为空，结束循环，直接返回
             if (in.isEmpty()) {
+
+                //TODO 取消对 SelectionKey.OP_WRITE 的感兴趣
+
                 // All written so clear OP_WRITE
                 clearOpWrite();
                 // Directly return here so incompleteWrite(...) is not called.
                 return;
             }
 
+            //TODO 获得每次写入的最大字节数
             // Ensure the pending writes are made of ByteBufs only.
             int maxBytesPerGatheringWrite = ((NioSocketChannelConfig) config).getMaxBytesPerGatheringWrite();
+
+            //TODO 从内存队列中，获得要写入的 ByteBuffer 数组
             ByteBuffer[] nioBuffers = in.nioBuffers(1024, maxBytesPerGatheringWrite);
+
+            //TODO 写入的 ByteBuffer 数组的个数
             int nioBufferCnt = in.nioBufferCount();
 
+            //TODO 写入 ByteBuffer 数组，到对端
             // Always us nioBuffers() to workaround data-corruption.
             // See https://github.com/netty/netty/issues/2761
             switch (nioBufferCnt) {
@@ -402,14 +433,26 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
                     // to check if the total size of all the buffers is non-zero.
                     ByteBuffer buffer = nioBuffers[0];
                     int attemptedBytes = buffer.remaining();
+
+                    // todo 执行 NIO write 调用，写入单个 ByteBuffer 对象到对端
                     final int localWrittenBytes = ch.write(buffer);
+
+                    // todo 写入字节小于等于 0 ，说明 NIO Channel 不可写，所以注册 SelectionKey.OP_WRITE ，
+                    //  等待 NIO Channel 可写，并返回以结束循环
                     if (localWrittenBytes <= 0) {
                         incompleteWrite(true);
                         return;
                     }
+
+                    //TODO  调整每次写入的最大字节数
                     adjustMaxBytesPerGatheringWrite(attemptedBytes, localWrittenBytes, maxBytesPerGatheringWrite);
+
+                    //TODO 从内存队列中，移除已经写入的数据( 消息 )
                     in.removeBytes(localWrittenBytes);
+
+                    //TODO 写入次数减一
                     --writeSpinCount;
+
                     break;
                 }
                 default: {
@@ -418,20 +461,33 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
                     // We limit the max amount to int above so cast is safe
                     long attemptedBytes = in.nioBufferSize();
                     final long localWrittenBytes = ch.write(nioBuffers, 0, nioBufferCnt);
+
+                    //TODO 写入字节小于等于 0 ，说明 NIO Channel 不可写，所以注册 SelectionKey.OP_WRITE ，
+                    // 等待 NIO Channel 可写，并返回以结束循环
                     if (localWrittenBytes <= 0) {
                         incompleteWrite(true);
                         return;
                     }
+
+                    //TODO 调整每次写入的最大字节数
                     // Casting to int is safe because we limit the total amount of data in the nioBuffers to int above.
                     adjustMaxBytesPerGatheringWrite((int) attemptedBytes, (int) localWrittenBytes,
                             maxBytesPerGatheringWrite);
+
+                    //TODO 从内存队列中，移除已经写入的数据( 消息 )
                     in.removeBytes(localWrittenBytes);
+
+                    //TODO 写入次数减一
                     --writeSpinCount;
                     break;
                 }
             }
+
+            //TODO  循环自旋写入
         } while (writeSpinCount > 0);
 
+        //TODO 内存队列中的数据未完全写入，说明 NIO Channel 不可写，
+        // 所以注册 SelectionKey.OP_WRITE ，等待 NIO Channel 可写
         incompleteWrite(writeSpinCount < 0);
     }
 

@@ -97,27 +97,50 @@ public abstract class MessageToByteEncoder<I> extends ChannelOutboundHandlerAdap
 
     @Override
     public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
+
+
         ByteBuf buf = null;
         try {
+
+            //todo 匹配对象 是否能处理对象 是否是传入的对象
             if (acceptOutboundMessage(msg)) {
+
+
                 @SuppressWarnings("unchecked")
                 I cast = (I) msg;
+
+
+                //todo 分配内存
                 buf = allocateBuffer(ctx, cast, preferDirect);
+
+
                 try {
+                    //todo 调用子类 实现
                     encode(ctx, cast, buf);
                 } finally {
+                    //todo 释放对象
                     ReferenceCountUtil.release(cast);
                 }
 
+
+                //todo 传播数据
                 if (buf.isReadable()) {
+                    //todo 传播数据
                     ctx.write(buf, promise);
                 } else {
+
+                    //todo 释放内存
                     buf.release();
                     ctx.write(Unpooled.EMPTY_BUFFER, promise);
                 }
+
                 buf = null;
+
             } else {
+
+                //todo 该 Encoder 不能处理该对象, 向下一节点传输
                 ctx.write(msg, promise);
+
             }
         } catch (EncoderException e) {
             throw e;

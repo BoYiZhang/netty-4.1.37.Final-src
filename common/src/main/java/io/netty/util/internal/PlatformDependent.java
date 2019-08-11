@@ -854,7 +854,7 @@ public final class PlatformDependent {
      * consumer (one thread!).
      * @return A MPSC queue which may be unbounded.
      */
-    public static <T> Queue<T> newMpscQueue() {
+    public static <T> Queue<T>   newMpscQueue() {
         return Mpsc.newMpscQueue();
     }
 

@@ -21,6 +21,7 @@ import java.util.concurrent.ThreadFactory;
 public final class ThreadPerTaskExecutor implements Executor {
     private final ThreadFactory threadFactory;
 
+    //todo 线程工厂对象
     public ThreadPerTaskExecutor(ThreadFactory threadFactory) {
         if (threadFactory == null) {
             throw new NullPointerException("threadFactory");
@@ -30,6 +31,8 @@ public final class ThreadPerTaskExecutor implements Executor {
 
     @Override
     public void execute(Runnable command) {
+
+        //todo 创建一个线程执行任务
         threadFactory.newThread(command).start();
     }
 }

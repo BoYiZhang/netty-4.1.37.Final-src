@@ -62,16 +62,25 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
         @Override
         public void read() {
             assert eventLoop().inEventLoop();
+
+            //todo 服务端配置
             final ChannelConfig config = config();
             final ChannelPipeline pipeline = pipeline();
+
+            //todo 处理速率
             final RecvByteBufAllocator.Handle allocHandle = unsafe().recvBufAllocHandle();
+
             allocHandle.reset(config);
 
             boolean closed = false;
             Throwable exception = null;
             try {
                 try {
+
+
+                    //todo 主体
                     do {
+                        //todo 已经创建一个 channel
                         int localRead = doReadMessages(readBuf);
                         if (localRead == 0) {
                             break;
@@ -80,25 +89,44 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
                             closed = true;
                             break;
                         }
-
+                        //todo 计数
                         allocHandle.incMessagesRead(localRead);
+
+                        //todo allocHandle   AdaptiveRecvByteBufAllocator$MaxMessageHandle#continueReading
                     } while (allocHandle.continueReading());
+
+
+
                 } catch (Throwable t) {
                     exception = t;
                 }
 
+
+                //todo  循环 readBuf 数组，触发 Channel read 事件到 pipeline 中。
                 int size = readBuf.size();
                 for (int i = 0; i < size; i ++) {
                     readPending = false;
+                    //todo 在内部，会通过 ServerBootstrapAcceptor ，
+                    // 将客户端的 Netty NioSocketChannel 注册到 EventLoop 上
                     pipeline.fireChannelRead(readBuf.get(i));
                 }
+
+
+                //todo 清空 readBuf 数组
                 readBuf.clear();
+
+                //todo 读取完成
                 allocHandle.readComplete();
+
+                //todo 触发 Channel readComplete 事件到 pipeline 中。
                 pipeline.fireChannelReadComplete();
 
+                //todo 发生异常
                 if (exception != null) {
+                    //TODO 判断是否要关闭
                     closed = closeOnReadError(exception);
 
+                    //TODO 触发 exceptionCaught 事件到 pipeline 中。
                     pipeline.fireExceptionCaught(exception);
                 }
 

@@ -179,12 +179,18 @@ public interface ChannelHandler {
 
     /**
      * Gets called after the {@link ChannelHandler} was added to the actual context and it's ready to handle events.
+     *
+     * todo ChannelHandler 已经成功被添加到 ChannelPipeline 中，可以进行处理事件。
+     *      该方法，一般用于 ChannelHandler 的初始化的逻辑
      */
     void handlerAdded(ChannelHandlerContext ctx) throws Exception;
 
     /**
      * Gets called after the {@link ChannelHandler} was removed from the actual context and it doesn't handle events
      * anymore.
+     *
+     * todo ChannelHandler 已经成功从 ChannelPipeline 中被移除，不再进行处理事件。
+     *   该方法，一般用于 ChannelHandler 的销毁的逻辑
      */
     void handlerRemoved(ChannelHandlerContext ctx) throws Exception;
 
@@ -193,6 +199,10 @@ public interface ChannelHandler {
      *
      * @deprecated if you want to handle this event you should implement {@link ChannelInboundHandler} and
      * implement the method there.
+     *
+     * todo 抓取到异常。目前被废弃，移到 ChannelInboundHandler 接口中，作为对 Exception Inbound 事件的处理
+     *
+     *
      */
     @Deprecated
     void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception;

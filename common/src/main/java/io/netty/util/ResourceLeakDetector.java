@@ -62,21 +62,29 @@ public class ResourceLeakDetector<T> {
         /**
          * Disables resource leak detection.
          */
+        //todo 完全禁止泄露检测，省点消耗。
         DISABLED,
         /**
          * Enables simplistic sampling resource leak detection which reports there is a leak or not,
          * at the cost of small overhead (default).
          */
+        //todo  默认等级，告诉我们取样的1%的ByteBuf是否发生了泄露，
+        //      但总共一次只打印一次，看不到就没有了。
         SIMPLE,
         /**
          * Enables advanced sampling resource leak detection which reports where the leaked object was accessed
          * recently at the cost of high overhead.
          */
+        //todo  告诉我们取样的1%的ByteBuf发生泄露的地方。
+        //      每种类型的泄漏（创建的地方与访问路径一致）只打印一次。对性能有影响。
         ADVANCED,
+
         /**
          * Enables paranoid resource leak detection which reports where the leaked object was accessed recently,
          * at the cost of the highest possible overhead (for testing purposes only).
          */
+        //todo 偏执（PARANOID） - 跟高级选项类似，
+        //     但此选项检测所有ByteBuf，而不仅仅是取样的那1%。对性能有绝大的影响。
         PARANOID;
 
         /**
@@ -101,6 +109,7 @@ public class ResourceLeakDetector<T> {
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(ResourceLeakDetector.class);
 
     static {
+        //todo 获得是否禁用泄露检测
         final boolean disabled;
         if (SystemPropertyUtil.get("io.netty.noResourceLeakDetection") != null) {
             disabled = SystemPropertyUtil.getBoolean("io.netty.noResourceLeakDetection", false);
@@ -112,18 +121,25 @@ public class ResourceLeakDetector<T> {
             disabled = false;
         }
 
+        //todo 获得默认级别
         Level defaultLevel = disabled? Level.DISABLED : DEFAULT_LEVEL;
 
+        //todo 获得配置的级别字符串，从老版本的配置
         // First read old property name
         String levelStr = SystemPropertyUtil.get(PROP_LEVEL_OLD, defaultLevel.name());
 
+
+        //todo 获得配置的级别字符串，从新版本的配置
         // If new property name is present, use it
         levelStr = SystemPropertyUtil.get(PROP_LEVEL, levelStr);
+
+        //todo 获得最终的级别
         Level level = Level.parseLevel(levelStr);
 
         TARGET_RECORDS = SystemPropertyUtil.getInt(PROP_TARGET_RECORDS, DEFAULT_TARGET_RECORDS);
         SAMPLING_INTERVAL = SystemPropertyUtil.getInt(PROP_SAMPLING_INTERVAL, DEFAULT_SAMPLING_INTERVAL);
 
+        //todo 设置最终的级别
         ResourceLeakDetector.level = level;
         if (logger.isDebugEnabled()) {
             logger.debug("-D{}: {}", PROP_LEVEL, level.name().toLowerCase());
@@ -167,10 +183,16 @@ public class ResourceLeakDetector<T> {
     private final Set<DefaultResourceLeak<?>> allLeaks =
             Collections.newSetFromMap(new ConcurrentHashMap<DefaultResourceLeak<?>, Boolean>());
 
+    //todo 引用队列
     private final ReferenceQueue<Object> refQueue = new ReferenceQueue<Object>();
+
+    //todo 已汇报的内存泄露的资源类型的集合
     private final ConcurrentMap<String, Boolean> reportedLeaks = PlatformDependent.newConcurrentHashMap();
 
+    //todo 资源类型
     private final String resourceType;
+
+    //todo 采集频率。
     private final int samplingInterval;
 
     /**
@@ -254,18 +276,28 @@ public class ResourceLeakDetector<T> {
     @SuppressWarnings("unchecked")
     private DefaultResourceLeak track0(T obj) {
         Level level = ResourceLeakDetector.level;
+
+        //todo DISABLED 级别，不创建
         if (level == Level.DISABLED) {
             return null;
         }
 
+        //todo SIMPLE 和 ADVANCED
         if (level.ordinal() < Level.PARANOID.ordinal()) {
             if ((PlatformDependent.threadLocalRandom().nextInt(samplingInterval)) == 0) {
+                //todo 汇报内存是否泄漏
                 reportLeak();
+                //todo 创建 DefaultResourceLeak 对象
                 return new DefaultResourceLeak(obj, refQueue, allLeaks);
             }
             return null;
         }
+
+        //todo PARANOID 级别
+        //     汇报内存是否泄漏
         reportLeak();
+
+        //todo 创建 DefaultResourceLeak 对象
         return new DefaultResourceLeak(obj, refQueue, allLeaks);
     }
 
@@ -280,12 +312,19 @@ public class ResourceLeakDetector<T> {
         }
     }
 
+    //todo 检测是否有内存泄露。若有，则进行汇报。
     private void reportLeak() {
+
+
+        //todo 如果不允许打印错误日志，则无法汇报，清理队列，并直接结束。
         if (!logger.isErrorEnabled()) {
+            //todo 清理队列
             clearRefQueue();
             return;
         }
 
+
+        //todo   循环引用队列，直到为空
         // Detect and report previous leaks.
         for (;;) {
             @SuppressWarnings("unchecked")
@@ -294,11 +333,15 @@ public class ResourceLeakDetector<T> {
                 break;
             }
 
+            //todo 清理，并返回是否内存泄露
             if (!ref.dispose()) {
                 continue;
             }
 
+            //todo 获得 Record 日志
             String records = ref.toString();
+
+            //todo 相同 Record 日志，只汇报一次
             if (reportedLeaks.putIfAbsent(records, Boolean.TRUE) == null) {
                 if (records.isEmpty()) {
                     reportUntracedLeak(resourceType);
@@ -424,10 +467,14 @@ public class ResourceLeakDetector<T> {
                 Record newHead;
                 boolean dropped;
                 do {
+
+                    //todo 已经关闭，则返回
                     if ((prevHead = oldHead = headUpdater.get(this)) == null) {
                         // already closed.
                         return;
                     }
+
+                    //todo  当超过 TARGET_RECORDS 数量时，随机丢到头节点。
                     final int numElements = oldHead.pos + 1;
                     if (numElements >= TARGET_RECORDS) {
                         final int backOffFactor = Math.min(numElements - TARGET_RECORDS, 30);
@@ -445,8 +492,11 @@ public class ResourceLeakDetector<T> {
             }
         }
 
+        //todo 清理，并返回是否内存泄露
         boolean dispose() {
             clear();
+
+            //todo 移除出 allLeaks 。移除成功，意味着内存泄露。
             return allLeaks.remove(this);
         }
 
@@ -463,6 +513,9 @@ public class ResourceLeakDetector<T> {
 
         @Override
         public boolean close(T trackedObject) {
+
+            //todo 移除出 allLeaks
+
             // Ensure that the object that was tracked is the same as the one that was passed to close(...).
             assert trackedHash == System.identityHashCode(trackedObject);
 
@@ -506,7 +559,9 @@ public class ResourceLeakDetector<T> {
 
         @Override
         public String toString() {
+            // 获得 head 属性，并置空
             Record oldHead = headUpdater.getAndSet(this, null);
+            // 若为空，说明已经关闭。
             if (oldHead == null) {
                 // Already closed
                 return EMPTY_STRING;
@@ -520,6 +575,7 @@ public class ResourceLeakDetector<T> {
             StringBuilder buf = new StringBuilder(present * 2048).append(NEWLINE);
             buf.append("Recent access records: ").append(NEWLINE);
 
+            //todo 拼接 Record 链
             int i = 1;
             Set<String> seen = new HashSet<String>(present);
             for (; oldHead != Record.BOTTOM; oldHead = oldHead.next) {
@@ -535,6 +591,7 @@ public class ResourceLeakDetector<T> {
                 }
             }
 
+            // 拼接 duped ( 重复 ) 次数
             if (duped > 0) {
                 buf.append(": ")
                         .append(duped)
@@ -542,6 +599,7 @@ public class ResourceLeakDetector<T> {
                         .append(NEWLINE);
             }
 
+            // 拼接 dropped (丢弃) 次数
             if (dropped > 0) {
                 buf.append(": ")
                    .append(dropped)
@@ -561,6 +619,8 @@ public class ResourceLeakDetector<T> {
     private static final AtomicReference<String[]> excludedMethods =
             new AtomicReference<String[]>(EmptyArrays.EMPTY_STRINGS);
 
+
+    //todo 忽略的方法集合
     public static void addExclusions(Class clz, String ... methodNames) {
         Set<String> nameSet = new HashSet<String>(Arrays.asList(methodNames));
         // Use loop rather than lookup. This avoids knowing the parameters, and doesn't have to handle
@@ -588,10 +648,17 @@ public class ResourceLeakDetector<T> {
     private static final class Record extends Throwable {
         private static final long serialVersionUID = 6065153674892850720L;
 
+
+        //todo 尾节点的单例
         private static final Record BOTTOM = new Record();
 
+        //todo  hint 字符串
         private final String hintString;
+
+        //todo 下一个节点
         private final Record next;
+
+        //todo  位置
         private final int pos;
 
         Record(Record next, Object hint) {

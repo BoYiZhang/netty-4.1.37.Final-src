@@ -77,11 +77,19 @@ public abstract class AbstractNioChannel extends AbstractChannel {
      * @param readInterestOp    the ops to set to receive data from the {@link SelectableChannel}
      */
     protected AbstractNioChannel(Channel parent, SelectableChannel ch, int readInterestOp) {
+        //todo 调用父类方法: 初始化 channel id, unsafe, pipeline 三个属性
         super(parent);
+
+
         this.ch = ch;
         this.readInterestOp = readInterestOp;
         try {
+
+
+            //todo 设置为非阻塞
             ch.configureBlocking(false);
+
+
         } catch (IOException e) {
             try {
                 ch.close();
@@ -241,21 +249,38 @@ public abstract class AbstractNioChannel extends AbstractChannel {
             }
 
             try {
+
+                //todo 目前有正在连接远程地址的 ChannelPromise ，则直接抛出异常，禁止同时发起多个连接。
                 if (connectPromise != null) {
                     // Already a connect in process.
                     throw new ConnectionPendingException();
                 }
 
+                //todo 记录 Channel 是否激活
                 boolean wasActive = isActive();
+
+                //todo  调用 channel 的doConnect 方法  执行连接远程地址
                 if (doConnect(remoteAddress, localAddress)) {
                     fulfillConnectPromise(promise, wasActive);
                 } else {
+
+                    //todo 记录 connectPromise
                     connectPromise = promise;
+
+                    //todo 记录 requestedRemoteAddress
                     requestedRemoteAddress = remoteAddress;
 
-                    // Schedule connect timeout.
+                    //todo 使用 EventLoop 发起定时任务，监听连接远程地址超时。
+                    //     若连接超时，则回调通知 connectPromise 超时异常。
+
+                    // Schedule connect timeout. //todo 默认 30 ses
+
                     int connectTimeoutMillis = config().getConnectTimeoutMillis();
+
+
                     if (connectTimeoutMillis > 0) {
+
+
                         connectTimeoutFuture = eventLoop().schedule(new Runnable() {
                             @Override
                             public void run() {
@@ -267,15 +292,21 @@ public abstract class AbstractNioChannel extends AbstractChannel {
                                 }
                             }
                         }, connectTimeoutMillis, TimeUnit.MILLISECONDS);
+
                     }
 
+                    //todo 添加监听器，监听连接远程地址取消。
                     promise.addListener(new ChannelFutureListener() {
                         @Override
                         public void operationComplete(ChannelFuture future) throws Exception {
                             if (future.isCancelled()) {
+
+                                //todo 取消定时任务
                                 if (connectTimeoutFuture != null) {
                                     connectTimeoutFuture.cancel(false);
                                 }
+
+                                //todo 置空 connectPromise
                                 connectPromise = null;
                                 close(voidPromise());
                             }
@@ -283,6 +314,8 @@ public abstract class AbstractNioChannel extends AbstractChannel {
                     });
                 }
             } catch (Throwable t) {
+
+                //todo 回调通知 promise 发生异常
                 promise.tryFailure(annotateConnectException(t, remoteAddress));
                 closeIfClosed();
             }
@@ -294,13 +327,19 @@ public abstract class AbstractNioChannel extends AbstractChannel {
                 return;
             }
 
+
+            // todo // 获得 Channel 是否激活
             // Get the state as trySuccess() may trigger an ChannelFutureListener that will close the Channel.
             // We still need to ensure we call fireChannelActive() in this case.
             boolean active = isActive();
 
+
+            // todo 回调通知 promise 执行成功
             // trySuccess() will return false if a user cancelled the connection attempt.
             boolean promiseSet = promise.trySuccess();
 
+
+            // todo  若 Channel 是新激活的，触发通知 Channel 已激活的事件。
             // Regardless if the connection attempt was cancelled, channelActive() event should be triggered,
             // because what happened is what happened.
             if (!wasActive && active) {
@@ -332,17 +371,28 @@ public abstract class AbstractNioChannel extends AbstractChannel {
             assert eventLoop().inEventLoop();
 
             try {
+                //todo 获得 Channel 是否激活
                 boolean wasActive = isActive();
+
+                //todo  执行完成连接
                 doFinishConnect();
+
+                //todo 通知 connectPromise 连接完成
                 fulfillConnectPromise(connectPromise, wasActive);
+
             } catch (Throwable t) {
+
+                //todo 通知 connectPromise 连接异常
                 fulfillConnectPromise(connectPromise, annotateConnectException(t, requestedRemoteAddress));
             } finally {
+                // todo 取消 connectTimeoutFuture 任务
                 // Check for null as the connectTimeoutFuture is only created if a connectTimeoutMillis > 0 is used
                 // See https://github.com/netty/netty/issues/1770
                 if (connectTimeoutFuture != null) {
                     connectTimeoutFuture.cancel(false);
                 }
+
+                //todo 置空 connectPromise
                 connectPromise = null;
             }
         }
@@ -379,7 +429,17 @@ public abstract class AbstractNioChannel extends AbstractChannel {
         boolean selected = false;
         for (;;) {
             try {
+
+                // todo 调用 #unwrappedSelector() 方法，返回 Java 原生 NIO Selector 对象。
+                // todo 每个 NioEventLoop 对象上，都独有一个 Selector 对象。
+
+
+                //todo 调用 #javaChannel() 方法，获得 Java 原生 NIO 的 Channel 对象
+                //todo 调用 SelectableChannel#register(Selector sel, int ops, Object att) 方法，
+                //     注册 Java 原生 NIO 的 Channel 对象到 Selector 对象上。
+
                 selectionKey = javaChannel().register(eventLoop().unwrappedSelector(), 0, this);
+
                 return;
             } catch (CancelledKeyException e) {
                 if (!selected) {
@@ -403,6 +463,7 @@ public abstract class AbstractNioChannel extends AbstractChannel {
 
     @Override
     protected void doBeginRead() throws Exception {
+        //todo channel 读取操作
         // Channel.read() or ChannelHandlerContext.read() was called
         final SelectionKey selectionKey = this.selectionKey;
         if (!selectionKey.isValid()) {
@@ -413,6 +474,7 @@ public abstract class AbstractNioChannel extends AbstractChannel {
 
         final int interestOps = selectionKey.interestOps();
         if ((interestOps & readInterestOp) == 0) {
+            //todo 绑定读取事件
             selectionKey.interestOps(interestOps | readInterestOp);
         }
     }

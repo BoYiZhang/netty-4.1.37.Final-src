@@ -96,39 +96,91 @@ import java.util.concurrent.TimeUnit;
  * @see WriteTimeoutHandler
  */
 public class IdleStateHandler extends ChannelDuplexHandler {
+
+    /**
+     * todo 最小的超时时间，单位：纳秒
+     */
     private static final long MIN_TIMEOUT_NANOS = TimeUnit.MILLISECONDS.toNanos(1);
 
     // Not create a new ChannelFutureListener per write operation to reduce GC pressure.
+
+
+    /**
+     * todo 写入任务监听器
+     */
     private final ChannelFutureListener writeListener = new ChannelFutureListener() {
         @Override
         public void operationComplete(ChannelFuture future) throws Exception {
+            //todo 记录最后写时间
             lastWriteTime = ticksInNanos();
+            //todo 重置 firstWriterIdleEvent 和 firstAllIdleEvent 为 true
             firstWriterIdleEvent = firstAllIdleEvent = true;
         }
     };
 
+
+    //todo 是否观察 {@link ChannelOutboundBuffer} 写入队列
     private final boolean observeOutput;
+
+    //todo 配置的读空闲时间，单位：纳秒
     private final long readerIdleTimeNanos;
+
+    //todo 配置的写空闲时间，单位：纳秒
     private final long writerIdleTimeNanos;
+
+    //todo 配置的All( 读或写任一 )，单位：纳秒
     private final long allIdleTimeNanos;
 
+
+    //todo 读空闲的定时检测任务
     private ScheduledFuture<?> readerIdleTimeout;
+
+    //todo  最后读时间
     private long lastReadTime;
+
+    //todo 是否首次读空闲
     private boolean firstReaderIdleEvent = true;
 
+
+    //todo 写空闲的定时检测任务
     private ScheduledFuture<?> writerIdleTimeout;
+
+    //todo 最后写时间
     private long lastWriteTime;
+
+    //todo 是否首次写空闲
     private boolean firstWriterIdleEvent = true;
 
+
+    //todo All 空闲时间，单位：纳秒
     private ScheduledFuture<?> allIdleTimeout;
+
+    //todo 是否首次 All 空闲
     private boolean firstAllIdleEvent = true;
 
+
+    /**
+     * todo 状态
+     *   0 - none ，未初始化
+     *   1 - initialized ，已经初始化
+     *   2 - destroyed ，已经销毁
+     */
     private byte state; // 0 - none, 1 - initialized, 2 - destroyed
+
+    //todo 是否正在读取
     private boolean reading;
 
+
+    //todo 最后检测到 {@link ChannelOutboundBuffer} 发生变化的时间
     private long lastChangeCheckTimeStamp;
+
+    //todo 第一条准备 flash 到对端的消息( {@link ChannelOutboundBuffer#current()} )的 HashCode
     private int lastMessageHashCode;
+
+    //todo 总共等待 flush 到对端的内存大小( {@link ChannelOutboundBuffer#totalPendingWriteBytes()} )
     private long lastPendingWriteBytes;
+
+
     private long lastFlushProgress;
 
     /**
@@ -280,33 +332,50 @@ public class IdleStateHandler extends ChannelDuplexHandler {
 
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+        //todo 开启了 read 或 all 的空闲检测
         if (readerIdleTimeNanos > 0 || allIdleTimeNanos > 0) {
+            //todo 标记正在读取
             reading = true;
+            //todo 重置 firstWriterIdleEvent 和 firstAllIdleEvent 为 true
             firstReaderIdleEvent = firstAllIdleEvent = true;
         }
+        //todo 继续传播 Channel Read 事件到下一个节点
         ctx.fireChannelRead(msg);
     }
 
+
     @Override
     public void channelReadComplete(ChannelHandlerContext ctx) throws Exception {
+        //todo 开启了 read 或 all 的空闲检测
         if ((readerIdleTimeNanos > 0 || allIdleTimeNanos > 0) && reading) {
+            //todo 记录最后读时间
             lastReadTime = ticksInNanos();
+
+            //todo 标记不在读取
             reading = false;
         }
+
+        //todo 继续传播 Channel ReadComplete 事件到下一个节点
         ctx.fireChannelReadComplete();
     }
 
     @Override
     public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
+        // 开启了 write 或 all 的空闲检测
+
         // Allow writing with void promise if handler is only configured for read timeout events.
         if (writerIdleTimeNanos > 0 || allIdleTimeNanos > 0) {
+            //todo 写入，并添加写入监听器
             ctx.write(msg, promise.unvoid()).addListener(writeListener);
         } else {
+
+            //todo 写入，不添加监听器
             ctx.write(msg, promise);
         }
     }
 
     private void initialize(ChannelHandlerContext ctx) {
+        // todo 校验状态，避免因为 `#destroy()` 方法在 `#initialize(ChannelHandlerContext ctx)` 方法，执行之前
         // Avoid the case where destroy() is called before scheduling timeouts.
         // See: https://github.com/netty/netty/issues/143
         switch (state) {
@@ -315,9 +384,13 @@ public class IdleStateHandler extends ChannelDuplexHandler {
             return;
         }
 
+        //todo 标记为已初始化
         state = 1;
+
+        //todo 初始化 ChannelOutboundBuffer 相关属性
         initOutputChanged(ctx);
 
+        //todo 初始相应的定时任务
         lastReadTime = lastWriteTime = ticksInNanos();
         if (readerIdleTimeNanos > 0) {
             readerIdleTimeout = schedule(ctx, new ReaderIdleTimeoutTask(ctx),
@@ -398,8 +471,11 @@ public class IdleStateHandler extends ChannelDuplexHandler {
             ChannelOutboundBuffer buf = unsafe.outboundBuffer();
 
             if (buf != null) {
+                //todo 记录第一条准备 flash 到对端的消息的 HashCode
                 lastMessageHashCode = System.identityHashCode(buf.current());
+                //todo 记录总共等待 flush 到对端的内存大小
                 lastPendingWriteBytes = buf.totalPendingWriteBytes();
+
                 lastFlushProgress = buf.currentProgress();
             }
         }
@@ -488,25 +564,38 @@ public class IdleStateHandler extends ChannelDuplexHandler {
 
         @Override
         protected void run(ChannelHandlerContext ctx) {
+            // 计算下一次检测的定时任务的延迟
             long nextDelay = readerIdleTimeNanos;
             if (!reading) {
                 nextDelay -= ticksInNanos() - lastReadTime;
             }
 
+            // 如果小于等于 0 ，说明检测到读空闲
             if (nextDelay <= 0) {
+
+                //todo 延迟时间为 readerIdleTimeNanos ，即再次检测
                 // Reader is idle - set a new timeout and notify the callback.
                 readerIdleTimeout = schedule(ctx, this, readerIdleTimeNanos, TimeUnit.NANOSECONDS);
 
+                //todo 获得当前是否首次检测到读空闲
                 boolean first = firstReaderIdleEvent;
+
+                //todo 标记 firstReaderIdleEvent 为 false 。也就说，下次检测到空闲，就非首次了。
                 firstReaderIdleEvent = false;
 
                 try {
+                    //todo 创建读空闲事件
                     IdleStateEvent event = newIdleStateEvent(IdleState.READER_IDLE, first);
+                    //todo 通知通道空闲事件
                     channelIdle(ctx, event);
                 } catch (Throwable t) {
+                    //todo 触发 Exception Caught 到下一个节点
                     ctx.fireExceptionCaught(t);
                 }
             } else {
+                // todo 如果大于 0 ，说明未检测到读空闲
+                //   延迟时间为 nextDelay ，即按照最后一次读的时间作为开始计数
+
                 // Read occurred before the timeout - set a new timeout with shorter delay.
                 readerIdleTimeout = schedule(ctx, this, nextDelay, TimeUnit.NANOSECONDS);
             }

@@ -31,6 +31,17 @@ import io.netty.util.internal.logging.InternalLoggerFactory;
 import java.util.concurrent.TimeUnit;
 
 /**
+ * todo AbstractTrafficShapingHandler允许限制全局的带宽（见GlobalTrafficShapingHandler）
+ *      或者每个session的带宽（见ChannelTrafficShapingHandler）作为流量整形。
+ *     它允许你使用TrafficCounter来实现几乎实时的带宽监控，
+ *     TrafficCounter会在每个检测间期（checkInterval）
+ *     调用这个处理器的doAccounting方法。
+ *
+ *
+ * todo    如果你有任何特别的原因想要停止监控（计数）或者改变读写的限制或者改变检测间期（checkInterval），可以使用如下方法：
+ *    ① configure：允许你改变读或写的限制，或者检测间期（checkInterval）；
+ *    ② getTrafficCounter：允许你获得TrafficCounter，并可以停止或启动监控，直接改变检测间期（checkInterval），或去访问它的值。
+ *
  * <p>AbstractTrafficShapingHandler allows to limit the global bandwidth
  * (see {@link GlobalTrafficShapingHandler}) or per session
  * bandwidth (see {@link ChannelTrafficShapingHandler}), as traffic shaping.
